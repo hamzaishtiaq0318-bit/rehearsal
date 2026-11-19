@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rehearsal security: threat model, protections and known limits</title>
+  <meta name="description" content="The threats Rehearsal is built for, from prompt injection to path injection and DNS rebinding, how each is handled, and the limits we are honest about.">
+  <link rel="canonical" href="https://rehearsal-ai-app.web.app/security">
+  <meta name="theme-color" content="#f6f5f0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1513" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="preload" href="/assets/fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/assets/site.css">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Rehearsal">
+  <meta property="og:title" content="Rehearsal security">
+  <meta property="og:description" content="Threat model, protections and known limits of a safety layer for AI agents.">
+  <meta property="og:url" content="https://rehearsal-ai-app.web.app/security">
+  <meta property="og:image" content="https://rehearsal-ai-app.web.app/assets/img/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "headline": "Rehearsal security: threat model, protections and known limits",
+        "url": "https://rehearsal-ai-app.web.app/security",
+        "inLanguage": "en",
+        "isPartOf": { "@id": "https://rehearsal-ai-app.web.app/#website" },
+        "about": { "@id": "https://rehearsal-ai-app.web.app/#software" }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://rehearsal-ai-app.web.app/" },
+          { "@type": "ListItem", "position": 2, "name": "Security", "item": "https://rehearsal-ai-app.web.app/security" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/" aria-label="Rehearsal home">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4" fill="none" stroke-width="2" stroke-dasharray="3.2 2.6" class="logo-back"/><rect x="10" y="10" width="19" height="19" rx="4.5" fill="#1f6b4e"/><path d="m14.6 19.7 3.2 3.2 6.3-6.6" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Rehearsal
+      </a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="/">Home</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/security" aria-current="page">Security</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="wrap page-head">
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a> / Security</nav>
+      <h1>Security</h1>
+      <p class="lead">Rehearsal assumes the agent can be fooled and the data it reads can be hostile. Its job is to make sure neither can change live data without a person seeing exactly what would happen.</p>
+    </div>
+
+    <section class="section" aria-labelledby="threats-title">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 id="threats-title">Threats and how each is handled</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <caption class="visually-hidden">Threat model</caption>
+            <thead><tr><th scope="col">Threat</th><th scope="col">What Rehearsal does</th><th scope="col">Tested</th></tr></thead>
+            <tbody>
+              <tr><td>Prompt injection hidden in data the agent reads</td><td>Every effect is rehearsed first and judged by what would change, not by the words that caused it. Prompt Guard adds an advisory flag and warns the agent.</td><td>Yes</td></tr>
+              <tr><td>Mass changes that each look reasonable</td><td>Rules flag tasks that touch several customers, move large sums or change many rows. High risk approvals need an explicit acknowledgement.</td><td>Yes</td></tr>
+              <tr><td>Path injection through tool arguments</td><td>Path arguments must be plain identifiers of the right type, so <code>1/orders</code> or <code>../admin</code> never reach the app.</td><td>Yes, 13 patterns</td></tr>
+              <tr><td>Destructive or bulk export endpoints</td><td>Only allow listed endpoints become tools. Customer export and permanent delete are never exposed.</td><td>Yes</td></tr>
+              <tr><td>Model keys leaking to generated code</td><td>The generated MCP server starts with only its base URL in its environment.</td><td>Yes</td></tr>
+              <tr><td>Live data changing during review</td><td>Approval re checks live against the snapshot and refuses if anything moved.</td><td>Yes</td></tr>
+              <tr><td>A replay that fails or differs</td><td>Live is restored from the pre approval snapshot and the restore is verified, with a clear warning if it cannot be.</td><td>Yes</td></tr>
+              <tr><td>A runaway agent</td><td>A hard limit on tool calls per task, enforced even inside a single model reply.</td><td>Yes</td></tr>
+              <tr><td>Approvals forged from another website</td><td>Writes need a per launch token and a JSON body, and requests for other host names are refused, which stops DNS rebinding.</td><td>Yes</td></tr>
+              <tr><td>Tampering with the record</td><td>The audit log is hash chained; any edit breaks the chain and the console says so.</td><td>Yes</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="limits-title">
+      <div class="wrap prose">
+        <h2 id="limits-title">Known limits</h2>
+        <p>We would rather say these plainly than have a reviewer find them.</p>
+        <ul>
+          <li><strong>Single writer during replay.</strong> Rehearsal assumes nothing else writes to live data during the fraction of a second a replay takes. Production use would add an app side lock or idempotency keys.</li>
+          <li><strong>SQLite today.</strong> Shadow copies and diffs use SQLite. Other databases need a different snapshot method.</li>
+          <li><strong>Reviewer names are self reported.</strong> The launch token proves a request came from the console, not who sat at it. A real deployment would sit behind single sign on.</li>
+          <li><strong>Rules, not mind reading.</strong> Risk rules catch effects that look unusual. A harmful change that looks exactly like normal work still needs a careful reviewer, which is why every change is shown in full.</li>
+          <li><strong>Prompt Guard is advisory.</strong> It caught blatant injections in testing and missed the polite one in our demo, scoring it 0.14. That is exactly why it never decides anything on its own.</li>
+        </ul>
+
+        <h2>Found a problem?</h2>
+        <p>Please open an issue on the <a href="https://github.com/hamzaishtiaq0318-bit/rehearsal" rel="noopener">GitHub repository</a>. Do not include real customer data or secrets in reports.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>Rehearsal. Built for the Vibe-a-thon by 2nd Brain Labs and Geek Room.</p>
+      <nav aria-label="Footer">
+        <a href="/">Home</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/docs">Docs</a>
+        <a href="https://github.com/hamzaishtiaq0318-bit/rehearsal" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

@@ -23,3 +23,6 @@ runtime/
 
 # Synapse local state: encrypted API key, session logs, scan cache
 **/.synapse/
+
+# Firebase deploy cache
+.firebase/

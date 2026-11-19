@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How Rehearsal works: shadow runs, row level review and verified replay</title>
+  <meta name="description" content="How Rehearsal wraps a Synapse generated MCP server: every agent tool call runs on a shadow copy, a reviewer sees the exact row level changes and risk flags, and approved calls replay on live data with verification and rollback.">
+  <link rel="canonical" href="https://rehearsal-ai-app.web.app/how-it-works">
+  <meta name="theme-color" content="#f6f5f0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1513" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="preload" href="/assets/fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/assets/site.css">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Rehearsal">
+  <meta property="og:title" content="How Rehearsal works">
+  <meta property="og:description" content="Shadow runs, row level review, plain risk rules, verified replay and one click undo, on top of a Synapse generated MCP server.">
+  <meta property="og:url" content="https://rehearsal-ai-app.web.app/how-it-works">
+  <meta property="og:image" content="https://rehearsal-ai-app.web.app/assets/img/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "headline": "How Rehearsal works",
+        "description": "Shadow runs, row level review, plain risk rules, verified replay and undo on top of a Synapse generated MCP server.",
+        "url": "https://rehearsal-ai-app.web.app/how-it-works",
+        "image": "https://rehearsal-ai-app.web.app/assets/img/og.png",
+        "inLanguage": "en",
+        "isPartOf": { "@id": "https://rehearsal-ai-app.web.app/#website" },
+        "about": { "@id": "https://rehearsal-ai-app.web.app/#software" }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://rehearsal-ai-app.web.app/" },
+          { "@type": "ListItem", "position": 2, "name": "How it works", "item": "https://rehearsal-ai-app.web.app/how-it-works" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/" aria-label="Rehearsal home">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4" fill="none" stroke-width="2" stroke-dasharray="3.2 2.6" class="logo-back"/><rect x="10" y="10" width="19" height="19" rx="4.5" fill="#1f6b4e"/><path d="m14.6 19.7 3.2 3.2 6.3-6.6" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Rehearsal
+      </a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="/">Home</a>
+        <a href="/how-it-works" aria-current="page">How it works</a>
+        <a href="/security">Security</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="wrap page-head">
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a> / How it works</nav>
+      <h1>How Rehearsal works</h1>
+      <p class="lead">Rehearsal is a safety layer between an AI agent and an existing app. It never edits the app and never trusts the agent: it watches what the agent's tool calls would actually do to the data, and lets a person decide.</p>
+    </div>
+
+    <section class="section" aria-labelledby="arch-title">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 id="arch-title">The architecture</h2>
+          <p class="lead">One Synapse generated MCP server, launched twice. The only difference between the two copies is the address they call.</p>
+        </div>
+        <figure class="diagram">
+          <svg viewBox="0 0 980 360" role="img" aria-labelledby="diagram-title diagram-desc">
+            <title id="diagram-title">Rehearsal architecture</title>
+            <desc id="diagram-desc">The agent calls tools through Rehearsal. During a rehearsal, calls go through the Synapse generated MCP server to a shadow copy of the app. After a person approves, the recorded writes replay through the same generated server against the live app, and Rehearsal verifies the result.</desc>
+            <defs>
+              <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z"/></marker>
+            </defs>
+            <rect class="box" x="20" y="140" width="150" height="80" rx="12"/>
+            <text x="95" y="176" text-anchor="middle">AI agent</text>
+            <text class="small" x="95" y="198" text-anchor="middle">free model chain</text>
+
+            <rect class="box-brand" x="230" y="110" width="200" height="140" rx="14"/>
+            <text x="330" y="150" text-anchor="middle" font-weight="600">Rehearsal</text>
+            <text class="small" x="330" y="174" text-anchor="middle">argument guard</text>
+            <text class="small" x="330" y="194" text-anchor="middle">recorder and diff</text>
+            <text class="small" x="330" y="214" text-anchor="middle">risk rules and audit</text>
+
+            <rect class="box" x="500" y="40" width="210" height="80" rx="12"/>
+            <text x="605" y="74" text-anchor="middle">Synapse MCP server</text>
+            <text class="small" x="605" y="96" text-anchor="middle">ENDPOINT_BASE_URL = shadow</text>
+
+            <rect class="box" x="500" y="240" width="210" height="80" rx="12"/>
+            <text x="605" y="274" text-anchor="middle">Synapse MCP server</text>
+            <text class="small" x="605" y="296" text-anchor="middle">ENDPOINT_BASE_URL = live</text>
+
+            <rect class="box" x="770" y="40" width="190" height="80" rx="12" stroke-dasharray="6 4"/>
+            <text x="865" y="74" text-anchor="middle">Shadow copy</text>
+            <text class="small" x="865" y="96" text-anchor="middle">app plus copied database</text>
+
+            <rect class="box-live" x="770" y="240" width="190" height="80" rx="12"/>
+            <text x="865" y="274" text-anchor="middle">Live app</text>
+            <text class="small" x="865" y="296" text-anchor="middle">never edited</text>
+
+            <path class="arrow" d="M170 180 H226"/>
+            <path class="arrow arrow-brand" d="M430 150 C470 150 460 80 496 80"/>
+            <text class="small" x="448" y="104">1. rehearse</text>
+            <path class="arrow dashed" d="M430 210 C470 210 460 280 496 280"/>
+            <text class="small" x="440" y="262">3. replay after approval</text>
+            <path class="arrow arrow-brand" d="M710 80 H766"/>
+            <path class="arrow" d="M710 280 H766"/>
+            <path class="arrow dashed" d="M865 120 V160 H436"/>
+            <text class="small" x="600" y="152">2. row level diff for review</text>
+          </svg>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap prose">
+        <h2>1. Rehearse on a shadow copy</h2>
+        <p>When a task starts, Rehearsal takes a consistent snapshot of the live database using SQLite's online backup, so it is safe even while the app is busy. It starts a second instance of the app on that copy and launches the Synapse generated MCP server against it. Every tool call the agent makes, read or write, goes to the shadow and is recorded.</p>
+        <p>Before a call leaves Rehearsal, its arguments are checked against the tool's real types, taken from the app's own OpenAPI spec. Synapse types every argument as <code>Any</code> and pastes path arguments into URLs, so an injected <code>order_id</code> of <code>1/orders</code> or <code>../admin</code> could otherwise reach a different route. Rehearsal blocks it.</p>
+
+        <h2>2. Review the exact changes</h2>
+        <p>When the agent stops, Rehearsal compares the shadow database with the snapshot, row by row and table by table. Each changed row is traced through foreign keys to the customer it belongs to. The reviewer sees plain sentences such as <em>Order 5003: status from delivered to partially refunded</em>, grouped by table, alongside the money involved.</p>
+
+        <h3>Risk rules, not guesses</h3>
+        <p>Flags come from simple, explainable rules rather than another model:</p>
+      </div>
+      <div class="wrap">
+        <div class="table-wrap">
+          <table>
+            <caption class="visually-hidden">Risk rules</caption>
+            <thead><tr><th scope="col">Flag</th><th scope="col">Level</th><th scope="col">Why it matters</th></tr></thead>
+            <tbody>
+              <tr><td>Touches more than one customer</td><td>High</td><td>A single support task almost always concerns one customer. Twelve is a red flag.</td></tr>
+              <tr><td>Payment above the approval limit</td><td>High</td><td>Large refunds or credits need a manager, whatever the agent was told.</td></tr>
+              <tr><td>Deletes records</td><td>High</td><td>Deleted rows cannot be recovered from inside the app.</td></tr>
+              <tr><td>Agent read text that looks like a prompt injection</td><td>High</td><td>Llama Prompt Guard 2 scans everything the agent reads. Advisory only.</td></tr>
+              <tr><td>Moves money out of the business</td><td>Medium</td><td>Shows the total and the number of payments at a glance.</td></tr>
+              <tr><td>Bulk change in one table</td><td>Medium</td><td>Many rows changing in one task deserves a closer look.</td></tr>
+              <tr><td>Blocked or failed tool calls</td><td>Medium or low</td><td>Shows the agent tried something that did not fit or did not work.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="wrap prose">
+        <h2>3. Decide, then verify</h2>
+        <p>Approving replays only the recorded writes that succeeded, in order, through the same generated MCP server pointed at the live app. Before replaying, Rehearsal checks that live data has not changed since the snapshot; if it has, it refuses and asks for a fresh rehearsal. After replaying, it diffs live against a snapshot taken just before approval and checks the result matches the rehearsal exactly. If anything differs, or any call fails, live data is restored and the restore itself is verified.</p>
+        <p>Rejecting discards the shadow. Undo restores the pre approval snapshot, but only when nobody else has changed live data since, so it can never erase other people's work.</p>
+
+        <h2>4. Every step is on the record</h2>
+        <p>Each rehearsal, tool call and decision is appended to an audit log in which every entry carries the hash of the one before it. Editing or deleting any past entry breaks the chain, and the console shows whether the chain is intact.</p>
+
+        <h2>Works with the app you already have</h2>
+        <p>Nothing about Rehearsal is specific to the demo store. A short <code>rehearsal.toml</code> file says how to start the app, which environment variable points it at a database, and which tables represent money and owners. Point it at another Synapse built app and the same shadow, review and replay cycle applies.</p>
+        <p class="note">Today the shadow copy works with apps backed by SQLite. Postgres support would use template databases or branching, with the same review and replay cycle on top.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>Rehearsal. Built for the Vibe-a-thon by 2nd Brain Labs and Geek Room.</p>
+      <nav aria-label="Footer">
+        <a href="/">Home</a>
+        <a href="/security">Security</a>
+        <a href="/docs">Docs</a>
+        <a href="https://github.com/hamzaishtiaq0318-bit/rehearsal" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
