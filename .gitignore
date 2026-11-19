@@ -20,3 +20,6 @@ runtime/
 
 # Organiser material, not ours to publish
 *.pdf
+
+# Synapse local state: encrypted API key, session logs, scan cache
+**/.synapse/

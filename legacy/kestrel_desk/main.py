@@ -233,8 +233,7 @@ def refund_order(order_id: int, body: RefundRequest,
 def list_tickets(status: TicketStatus | None = Query(default=None),
                  limit: int = Query(default=20, ge=1, le=100),
                  conn: sqlite3.Connection = Depends(get_conn)) -> list[dict]:
-    """List support tickets: open first, then pending, then closed; most urgent first within each.
-    Optionally filter by status (open, pending or closed)."""
+    """List support tickets: open first, then pending, then closed, most urgent first within each."""
     sql = """SELECT t.id, t.subject, t.status, t.priority, t.order_id, t.created_at, c.name AS customer
              FROM tickets t JOIN customers c ON c.id = t.customer_id"""
     args: list = []
