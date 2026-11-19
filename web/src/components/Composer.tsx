@@ -61,7 +61,8 @@ export function Composer({ status, ticketIds, canSend, busy, placeholder, initia
   }, [autoFocus]);
 
   const trimmed = text.trim();
-  const ready = canSend && !busy && trimmed.length >= 2;
+  const needsTicket = Boolean(status?.public_demo) && ticket === null;
+  const ready = canSend && !busy && trimmed.length >= 2 && !needsTicket;
 
   function submit() {
     if (!ready) return;
@@ -121,7 +122,9 @@ export function Composer({ status, ticketIds, canSend, busy, placeholder, initia
       <p id={ids.hint} className="composer-hint">
         {!canSend
           ? "Read only. Open the link printed when Rehearsal started to send requests."
-          : ticket
+          : needsTicket
+            ? "In the public demo, mention a ticket number, for example: please resolve ticket 1002."
+            : ticket
             ? `Ticket ${ticket} attached. ${MODES[effectiveMode].hint}`
             : "Nothing touches live data until you approve. Enter to send, Shift and Enter for a new line."}
       </p>

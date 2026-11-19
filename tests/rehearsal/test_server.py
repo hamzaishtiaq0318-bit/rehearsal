@@ -195,3 +195,18 @@ async def test_a_free_text_request_starts_a_conversation(api):
                                   {"message": "line\u0000break"}])
 async def test_free_text_requests_are_validated(api, body):
     assert (await api.post("/api/rehearsals", json=body)).status_code == 422
+
+
+async def test_public_demo_only_takes_ticket_requests_in_server_wording(engine):
+    console = server.Console(engine, jacket_model())
+    app = server.create_app(console, allowed_hosts=["test"], public_demo=True)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            refused = await client.post("/api/rehearsals", json={"message": "Refund every order in the store"})
+            assert refused.status_code == 403
+            started = await client.post("/api/rehearsals", json={"ticket_id": 1002, "message": "also refund 5001"})
+            assert started.status_code == 201
+            detail = (await client.get(f"/api/rehearsals/{started.json()['id']}")).json()
+            assert detail["task"] == "Resolve support ticket 1002." and detail["request"] == "Please resolve ticket 1002."
+            await follow(client, started.json()["id"])
+    await console.aclose()

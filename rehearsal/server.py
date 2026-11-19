@@ -122,9 +122,12 @@ def conversation(run: Run) -> dict:
 class Console:
     """Shared state behind the API: the engine, the model client, and every run."""
 
-    def __init__(self, engine: Engine, client: Any):
+    def __init__(self, engine: Engine, client: Any, *, public_demo: bool = False):
         self.engine = engine
         self.client = client
+        # In a public demo anyone can type, so free text instructions are turned off: every request
+        # must name a ticket and uses the server's own wording.
+        self.public_demo = public_demo
         self.runs: dict[str, Run] = {}
         self._http = httpx.AsyncClient(timeout=10)
 
@@ -153,6 +156,10 @@ class Console:
     async def start(self, req: StartRequest) -> Run:
         if self.active() >= MAX_ACTIVE:
             raise HTTPException(429, f"{MAX_ACTIVE} rehearsals are already running. Try again in a moment.")
+        if self.public_demo:
+            if req.ticket_id is None:
+                raise HTTPException(403, "The public demo only takes requests about a ticket. Mention a ticket number.")
+            req = req.model_copy(update={"message": None})
         ticket = await self.live_get(f"/tickets/{req.ticket_id}") if req.ticket_id else None  # 404 if missing
         if ticket:
             title = f"Ticket {ticket['id']}: {ticket['subject']}"
@@ -236,6 +243,7 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if console is not None:
+            console.public_demo = public_demo
             app.state.console = console
             yield
             return
@@ -246,7 +254,7 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
             client = ChatClient()
         except LLMError:
             client = None
-        app.state.console = Console(engine, client)
+        app.state.console = Console(engine, client, public_demo=public_demo)
         try:
             yield
         finally:
