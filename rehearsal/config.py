@@ -47,6 +47,7 @@ class Config:
     target: Target
     risk: RiskConfig
     runtime_dir: Path
+    phrases: dict[str, str] = field(default_factory=dict)  # tool name -> plain sentence template
 
 
 def load_env(path: Path = ROOT / ".env") -> None:
@@ -77,4 +78,5 @@ def load(path: Path | None = None) -> Config:
         owner_table=t.get("owner_table"),
         money=dict(t.get("money", {})),
     )
-    return Config(target, RiskConfig(**raw.get("risk", {})), (base / raw.get("runtime_dir", "runtime")).resolve())
+    return Config(target, RiskConfig(**raw.get("risk", {})), (base / raw.get("runtime_dir", "runtime")).resolve(),
+                  dict(raw.get("phrases", {})))

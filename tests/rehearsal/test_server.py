@@ -168,3 +168,30 @@ async def test_event_stream_resumes_after_a_reconnect(api):
     r = await api.get(f"/api/rehearsals/{rid}/events", headers={"last-event-id": "2"})
     resumed = [line.split(": ", 1)[1] for line in r.text.splitlines() if line.startswith("event: ")]
     assert resumed == full[3:]
+
+
+async def test_conversations_have_titles_and_plain_action_lists(api):
+    rid = (await api.post("/api/rehearsals", json={"ticket_id": 1002})).json()["id"]
+    await follow(api, rid)
+    listed = (await api.get("/api/rehearsals")).json()[0]
+    assert listed["title"] == "Ticket 1002: Jacket arrived with a torn sleeve" and listed["ticket_id"] == 1002
+    detail = (await api.get(f"/api/rehearsals/{rid}")).json()
+    assert detail["request"] == "Please resolve ticket 1002."
+    assert detail["actions"] == ["Refund 249.00 USD on order 5003", "Reply to the customer on ticket 1002",
+                                 "Close ticket 1002"]
+
+
+async def test_a_free_text_request_starts_a_conversation(api):
+    api.console.client = ScriptedModel(reply(("get_customer", {"customer_id": 4})),
+                                       reply(text="Tom Whitfield is a business customer with no store credit."))
+    started = await api.post("/api/rehearsals", json={"message": "Who is customer 4?"})
+    assert started.status_code == 201 and started.json()["title"] == "Who is customer 4?"
+    await follow(api, started.json()["id"])
+    detail = (await api.get(f"/api/rehearsals/{started.json()['id']}")).json()
+    assert detail["ticket_id"] is None and detail["review"]["changes"] == []
+
+
+@pytest.mark.parametrize("body", [{}, {"message": "x" * 501}, {"message": "hi", "mode": "simulated"},
+                                  {"message": "line\u0000break"}])
+async def test_free_text_requests_are_validated(api, body):
+    assert (await api.post("/api/rehearsals", json=body)).status_code == 422

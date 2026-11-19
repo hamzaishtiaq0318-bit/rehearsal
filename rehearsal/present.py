@@ -1,6 +1,7 @@
 """Turn engine objects into plain data and plain sentences for reviewers, the API and reports."""
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from .dbdiff import RowChange
@@ -42,6 +43,38 @@ def describe(change: RowChange, volatile: frozenset[str]) -> str:
     return f"{label.capitalize()} {key}: {'; '.join(parts)}"
 
 
+def _plain(value: Any) -> str:
+    return str(value).replace("_", " ")
+
+
+def _amount(value: Any) -> str:
+    try:
+        return f"{Decimal(str(value)):,.2f}"
+    except (InvalidOperation, ValueError):
+        return _plain(value)
+
+
+def action_sentence(tool: str, args: dict[str, Any], phrases: dict[str, str]) -> str:
+    """One plain sentence for one recorded write, for example: Refund 249.00 USD on order 5003."""
+    template = phrases.get(tool)
+    if template:
+        try:
+            sentence = template.format(**{k: _amount(v) if k == "amount" else _plain(v) for k, v in args.items()})
+        except (KeyError, IndexError, ValueError):
+            sentence = ""
+        if sentence:
+            if tool == "update_ticket" and args.get("status") in ("closed", "pending", "open"):
+                verb = {"closed": "Close", "pending": "Park", "open": "Reopen"}[args["status"]]
+                sentence = f"{verb} ticket {args.get('ticket_id')}" + (" and mark it pending" if args["status"] == "pending" else "")
+                if args.get("priority"):
+                    sentence += f" with {args['priority']} priority"
+            elif tool == "update_ticket" and args.get("priority"):
+                sentence = f"Set ticket {args.get('ticket_id')} to {args['priority']} priority"
+            return sentence
+    details = ", ".join(f"{_plain(k)} {_plain(v)}" for k, v in args.items() if v is not None)
+    return f"{_plain(tool).capitalize()}" + (f" ({details})" if details else "")
+
+
 def rehearsal_dict(r: Rehearsal) -> dict:
     volatile = r.engine.target.volatile_columns
     review = None
@@ -60,6 +93,7 @@ def rehearsal_dict(r: Rehearsal) -> dict:
         "id": r.id, "task": r.task, "actor": r.actor, "state": str(r.state), "created_at": r.created_at,
         "calls": [c.to_dict() for c in r.calls],
         "replay": [c.index for c in r.replay_calls()],
+        "actions": [action_sentence(c.tool, c.args, r.engine.config.phrases) for c in r.replay_calls()],
         "review": review,
         "outcome": {"state": str(r.outcome.state), "message": r.outcome.message, "verified": r.outcome.verified}
         if r.outcome else None,

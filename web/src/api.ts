@@ -72,9 +72,26 @@ export interface Call {
   at: string;
 }
 
+export interface ConversationRow {
+  id: string;
+  title: string;
+  ticket_id: number | null;
+  mode: RehearsalDetail["mode"];
+  model: string;
+  state: RehearsalDetail["state"];
+  created_at: string;
+  risk: Risk | null;
+  running: boolean;
+  changes: number | null;
+}
+
 export interface RehearsalDetail {
   id: string;
   task: string;
+  title: string;
+  request: string;
+  ticket_id: number | null;
+  actions: string[];
   actor: string;
   state: "rehearsing" | "ready" | "applied" | "rejected" | "stale" | "failed" | "undone";
   created_at: string;
@@ -168,8 +185,9 @@ export const api = {
   tickets: () => request<TicketRow[]>("/api/tickets"),
   ticket: (id: number) => request<TicketDetail>(`/api/tickets/${id}`),
   rehearsal: (id: string) => request<RehearsalDetail>(`/api/rehearsals/${encodeURIComponent(id)}`),
-  start: (ticketId: number, mode: RehearsalDetail["mode"]) =>
-    request<{ id: string }>("/api/rehearsals", { ticket_id: ticketId, mode }),
+  conversations: () => request<ConversationRow[]>("/api/rehearsals"),
+  start: (body: { ticket_id?: number; message?: string; mode: RehearsalDetail["mode"] }) =>
+    request<{ id: string; title: string }>("/api/rehearsals", body),
   decide: (id: string, decision: Decision, reviewer: string, reason = "") =>
     request<RehearsalDetail>(`/api/rehearsals/${encodeURIComponent(id)}/${decision}`, { reviewer, reason }),
   audit: () => request<{ verified: boolean; count: number; entries: AuditEntry[] }>("/api/audit"),

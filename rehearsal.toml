@@ -25,3 +25,10 @@ credits = "amount_cents"
 [risk]
 single_payment_limit_cents = 50000
 bulk_rows = 5
+
+# How each write tool is described to the reviewer, in plain words. Tools not listed get a generic sentence.
+[phrases]
+refund_order = "Refund {amount} USD on order {order_id}"
+add_store_credit = "Add {amount} USD store credit for customer {customer_id}"
+reply_to_ticket = "Reply to the customer on ticket {ticket_id}"
+update_ticket = "Update ticket {ticket_id}"

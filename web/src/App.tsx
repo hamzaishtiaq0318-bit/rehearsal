@@ -1,19 +1,22 @@
-import { CircleAlert, Inbox, Moon, ScrollText, Sun } from "lucide-react";
+import { CircleAlert, PanelLeftOpen, ShieldAlert, Wrench } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import type { Status, TicketRow } from "./api";
+import type { ConversationRow, RehearsalDetail, Status, TicketRow } from "./api";
 import { api, errorMessage, hasToken } from "./api";
 import { AuditView } from "./components/AuditView";
+import type { ComposerSubmit } from "./components/Composer";
+import { Composer } from "./components/Composer";
+import { Conversation } from "./components/Conversation";
 import { Logo } from "./components/Logo";
-import { Queue } from "./components/Queue";
-import { TicketView } from "./components/TicketView";
+import { Sidebar } from "./components/Sidebar";
+import { greeting } from "./components/words";
 
-type Route = { view: "console"; ticket: number | null } | { view: "audit" };
+type Route = { view: "new" } | { view: "chat"; id: string } | { view: "audit" };
 
 function parseRoute(hash: string): Route {
   if (hash.startsWith("#/audit")) return { view: "audit" };
-  const match = /^#\/ticket\/(\d{1,8})$/.exec(hash);
-  return { view: "console", ticket: match ? Number(match[1]) : null };
+  const match = /^#\/c\/([a-f0-9]{6,32})$/.exec(hash);
+  return match ? { view: "chat", id: match[1]! } : { view: "new" };
 }
 
 function useRoute(): [Route, (hash: string) => void] {
@@ -38,35 +41,64 @@ function initialTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function Welcome({ target }: { target: string }) {
+interface StartProps {
+  status: Status | null;
+  tickets: TicketRow[];
+  canSend: boolean;
+  busy: boolean;
+  onStart: (body: { ticket_id?: number; message?: string; mode: RehearsalDetail["mode"] }) => void;
+}
+
+function NewChat({ status, tickets, canSend, busy, onStart }: StartProps) {
+  const open = tickets.filter((t) => t.status !== "closed");
+  const attack = status?.simulation_ticket ?? 1006;
+  const others = open.filter((t) => t.id !== attack && t.id !== 1002);
   return (
-    <div className="main-inner">
-      <section className="empty card" aria-labelledby="welcome-title">
-        <p className="eyebrow">Rehearsal console</p>
-        <h1 id="welcome-title">Pick a ticket. Watch the agent rehearse. Decide what goes live.</h1>
+    <div className="new-chat-view">
+      <div className="hello">
+        <span className="hello-mark" aria-hidden="true"><Logo /></span>
+        <h1>{greeting()}. What should the agent work on?</h1>
         <p>
-          Rehearsal sits between an AI agent and {target}. Every tool call runs on a shadow copy first, so you see the
-          exact rows that would change before anything real does.
+          The agent works through tools Synapse generated from {status?.target ?? "the app"}. Everything it does runs
+          on a private copy first, and I will ask you before anything touches the live store.
         </p>
-        <ol className="how">
-          <li>
-            <strong>1. Rehearse</strong>
-            The agent works through Synapse generated tools on a private copy of the app.
-          </li>
-          <li>
-            <strong>2. Review</strong>
-            See every changed row, the money involved and plain risk flags.
-          </li>
-          <li>
-            <strong>3. Decide</strong>
-            Approve to replay the exact calls on live data, or reject and nothing happens.
-          </li>
-          <li>
-            <strong>4. Verify</strong>
-            Rehearsal checks live changed exactly as rehearsed, and can undo it.
-          </li>
-        </ol>
-      </section>
+      </div>
+
+      <div className="starters" aria-label="Try one of these">
+        <button type="button" className="starter" disabled={!canSend || busy}
+          onClick={() => onStart({ ticket_id: attack, mode: "simulated" })}>
+          <span className="starter-icon risk"><ShieldAlert size={18} aria-hidden="true" /></span>
+          <span className="starter-title">Watch Rehearsal catch an attack</span>
+          <span className="starter-text">Ticket {attack} hides an instruction to refund twelve strangers. A scripted
+            agent falls for it.</span>
+        </button>
+        <button type="button" className="starter" disabled={!canSend || busy}
+          onClick={() => onStart({ ticket_id: 1002, mode: "agent" })}>
+          <span className="starter-icon"><Wrench size={18} aria-hidden="true" /></span>
+          <span className="starter-title">Let the AI agent fix a torn jacket</span>
+          <span className="starter-text">A real free model handles ticket 1002. You approve the refund it
+            proposes.</span>
+        </button>
+      </div>
+
+      {others.length > 0 && (
+        <div className="more-tickets">
+          <p>Or pick another open ticket</p>
+          <div className="ticket-chips">
+            {others.map((t) => (
+              <button key={t.id} type="button" className="ticket-chip" disabled={!canSend || busy}
+                onClick={() => onStart({ ticket_id: t.id, mode: "agent" })}>
+                <span className="mono">{t.id}</span> {t.subject}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="composer-dock">
+        <Composer status={status} ticketIds={tickets.map((t) => t.id)} canSend={canSend} busy={busy} autoFocus
+          onSubmit={(v: ComposerSubmit) => onStart({ ticket_id: v.ticketId ?? undefined, message: v.message, mode: v.mode })} />
+      </div>
     </div>
   );
 }
@@ -74,34 +106,63 @@ function Welcome({ target }: { target: string }) {
 export function App() {
   const [route, navigate] = useRoute();
   const [status, setStatus] = useState<Status | null>(null);
-  const [tickets, setTickets] = useState<TicketRow[] | null>(null);
+  const [tickets, setTickets] = useState<TicketRow[]>([]);
+  const [conversations, setConversations] = useState<ConversationRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
   const refresh = useCallback(() => {
-    Promise.all([api.status(), api.tickets()])
-      .then(([s, t]) => {
+    Promise.all([api.status(), api.tickets(), api.conversations()])
+      .then(([s, t, c]) => {
         setStatus(s);
         setTickets(t);
+        setConversations(c);
         setError(null);
       })
       .catch((e) => setError(errorMessage(e)));
   }, []);
 
+  const anyRunning = conversations.some((c) => c.running);
   useEffect(() => {
     refresh();
-    const timer = window.setInterval(refresh, 10_000);
+    const timer = window.setInterval(refresh, anyRunning ? 4_000 : 12_000);
     return () => window.clearInterval(timer);
-  }, [refresh]);
+  }, [refresh, anyRunning]);
 
   useEffect(() => {
-    const title = route.view === "audit" ? "Audit log" : route.ticket ? `Ticket ${route.ticket}` : "Support queue";
-    document.title = `${title} | Rehearsal`;
-  }, [route]);
+    const current = route.view === "chat" ? conversations.find((c) => c.id === route.id) : null;
+    document.title = `${route.view === "audit" ? "Audit log" : current?.title ?? "New conversation"} | Rehearsal`;
+  }, [route, conversations]);
+
+  // Any page change (a link, Back, Forward or a typed address) closes the phone menu.
+  useEffect(() => setMenuOpen(false), [route]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
+
+  async function start(body: { ticket_id?: number; message?: string; mode: RehearsalDetail["mode"] }) {
+    setStarting(true);
+    setError(null);
+    try {
+      const { id } = await api.start(body);
+      navigate(`#/c/${id}`);
+      refresh();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setStarting(false);
+    }
+  }
 
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
@@ -109,86 +170,61 @@ export function App() {
     try {
       localStorage.setItem("rehearsal-theme", next);
     } catch {
-      /* the choice then lasts for this page view only */
+      /* lasts for this page view only */
     }
   }
 
-  const selected = route.view === "console" ? route.ticket : null;
-  const row = tickets?.find((t) => t.id === selected) ?? null;
-  const readyModels = status?.models.filter((m) => m.state === "ready").length ?? 0;
+  const canSend = hasToken() || Boolean(status?.public_demo);
 
   return (
-    <>
-      <a className="skip-link" href="#content">
-        Skip to content
-      </a>
-      <header className="topbar">
-        <a className="brand" href="#/" aria-label="Rehearsal, support queue">
-          <Logo />
-          <span>Rehearsal</span>
-        </a>
-        {status && <span className="context">Protecting {status.target}</span>}
-        <nav aria-label="Main">
-          <a className="navlink" href="#/" aria-current={route.view === "console" ? "page" : undefined}>
-            <Inbox size={17} aria-hidden="true" />
-            <span>Queue</span>
-          </a>
-          <a className="navlink" href="#/audit" aria-current={route.view === "audit" ? "page" : undefined}>
-            <ScrollText size={17} aria-hidden="true" />
-            <span>Audit log</span>
-          </a>
-        </nav>
-        {status && (
-          <span className="pill" data-tone={readyModels > 0 ? "good" : "medium"} title="Free models ready to use"
-            aria-label={`${readyModels} free models ready`}>
-            <span className="num">{readyModels}</span>
-            <span className="pill-label">models ready</span>
-          </span>
+    <div className="app" data-menu-open={menuOpen}>
+      <a className="skip-link" href="#content">Skip to content</a>
+      <Sidebar status={status} conversations={conversations} selected={route.view === "chat" ? route.id : null}
+        view={route.view === "audit" ? "audit" : "chat"} theme={theme} open={menuOpen}
+        onClose={() => setMenuOpen(false)} onToggleTheme={toggleTheme} />
+      <button type="button" className="scrim" aria-hidden="true" tabIndex={-1} onClick={() => setMenuOpen(false)} />
+
+      <div className="stage">
+        <header className="mobile-bar">
+          <button type="button" className="icon-button" onClick={() => setMenuOpen(true)} aria-label="Open the menu"
+            aria-expanded={menuOpen}>
+            <PanelLeftOpen size={18} aria-hidden="true" />
+          </button>
+          <a className="brand" href="#/"><Logo /><span>Rehearsal</span></a>
+        </header>
+
+        {status && !canSend && (
+          <p className="banner" role="note">
+            <CircleAlert size={17} aria-hidden="true" />
+            Read only. Open the link printed in the terminal when Rehearsal started to talk to the agent.
+          </p>
         )}
-        <button type="button" className="icon-button" onClick={toggleTheme}
-          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>
-          {theme === "dark" ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
-        </button>
-      </header>
+        {error && (
+          <p className="banner" role="alert">
+            <CircleAlert size={17} aria-hidden="true" />
+            {error}
+          </p>
+        )}
 
-      {status && !hasToken() && !status.public_demo && (
-        <p className="banner" role="note">
-          <CircleAlert size={18} aria-hidden="true" />
-          Read only view. Open the link printed in the terminal when Rehearsal started to run and approve rehearsals.
-        </p>
-      )}
-      {error && (
-        <p className="banner" role="alert">
-          <CircleAlert size={18} aria-hidden="true" />
-          {error}
-        </p>
-      )}
-
-      {route.view === "audit" ? (
-        <main id="content" className="main" tabIndex={-1}>
-          <AuditView publicDemo={Boolean(status?.public_demo)} onReset={refresh} />
+        <main id="content" className="content" tabIndex={-1}>
+          {route.view === "audit" ? (
+            <div className="page">
+              <AuditView publicDemo={Boolean(status?.public_demo)} onReset={() => { refresh(); navigate("#/"); }} />
+            </div>
+          ) : route.view === "chat" ? (
+            <div className="chat-view">
+              <Conversation key={route.id} id={route.id} status={status} onChanged={refresh} />
+              <div className="composer-dock">
+                <Composer status={status} ticketIds={tickets.map((t) => t.id)} canSend={canSend} busy={starting}
+                  placeholder="Ask about another ticket, or anything about the store"
+                  onSubmit={(v) => start({ ticket_id: v.ticketId ?? undefined, message: v.message, mode: v.mode })} />
+              </div>
+            </div>
+          ) : (
+            <NewChat status={status} tickets={tickets} canSend={canSend} busy={starting} onStart={start} />
+          )}
         </main>
-      ) : (
-        <div className="layout" data-has-selection={selected !== null}>
-          <aside className="queue" aria-label="Support queue">
-            <Queue tickets={tickets} selected={selected} onSelect={(id) => navigate(`#/ticket/${id}`)} />
-          </aside>
-          <main id="content" className="main" tabIndex={-1}>
-            {selected === null ? (
-              <Welcome target={status?.target ?? "your app"} />
-            ) : (
-              <TicketView
-                ticketId={selected}
-                status={status}
-                rehearsalId={row?.rehearsal?.id ?? null}
-                running={row?.rehearsal?.state === "rehearsing"}
-                onBack={() => navigate("#/")}
-                onChanged={refresh}
-              />
-            )}
-          </main>
-        </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 }

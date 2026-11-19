@@ -1,12 +1,12 @@
-/** Two frames: the dashed one is the rehearsal, the solid one is live data that passed review. */
+/** The Rehearsal mark: a dotted draft (the rehearsal) behind a solid tile with a tick (the approved live change). */
 export function Logo({ title }: { title?: string }) {
   return (
-    <svg viewBox="0 0 32 32" role={title ? "img" : undefined} aria-hidden={title ? undefined : true}>
+    <svg viewBox="0 0 48 48" role={title ? "img" : undefined} aria-hidden={title ? undefined : true} className="mark">
       {title && <title>{title}</title>}
-      <rect x="3.5" y="3.5" width="17" height="17" rx="4" fill="none" stroke="var(--brand)" strokeWidth="2"
-        strokeDasharray="3.2 2.6" />
-      <rect x="10" y="10" width="19" height="19" rx="4.5" fill="var(--brand)" />
-      <path d="m14.6 19.7 3.2 3.2 6.3-6.6" fill="none" stroke="var(--on-brand)" strokeWidth="2.4"
+      <rect x="5" y="5" width="26" height="26" rx="7" fill="none" stroke="var(--brand)" strokeWidth="3.4"
+        strokeDasharray="1 5.6" strokeLinecap="round" />
+      <rect x="14" y="14" width="30" height="30" rx="9" fill="var(--mark)" />
+      <path d="m21.5 29.5 4.6 4.6 9.4-9.8" fill="none" stroke="var(--on-mark)" strokeWidth="3.6"
         strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );

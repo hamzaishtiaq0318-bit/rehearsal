@@ -19,7 +19,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from . import config as config_mod
 from .agent import ReplayModel, run_agent
@@ -57,6 +57,9 @@ class Run:
     rehearsal: Rehearsal
     mode: str
     model: str
+    title: str
+    request: str  # what the person asked for, in their words
+    ticket_id: int | None
     events: list[dict] = field(default_factory=list)
     done: bool = False
     task: asyncio.Task | None = None
@@ -75,8 +78,27 @@ class Run:
 
 
 class StartRequest(BaseModel):
-    ticket_id: int = Field(ge=1, le=10_000_000)
+    ticket_id: int | None = Field(default=None, ge=1, le=10_000_000)
+    message: str | None = Field(default=None, min_length=2, max_length=500)
     mode: Literal["agent", "simulated", "replay"] = "agent"
+
+    @field_validator("message")
+    @classmethod
+    def plain_message(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = " ".join(value.split())
+        if any(ord(ch) < 32 for ch in value):
+            raise ValueError("control characters are not allowed")
+        return value
+
+    @model_validator(mode="after")
+    def needs_something_to_do(self) -> "StartRequest":
+        if self.ticket_id is None and not self.message:
+            raise ValueError("Send a ticket_id, a message, or both")
+        if self.mode != "agent" and self.ticket_id is None:
+            raise ValueError("Recorded runs and the simulation need a ticket_id")
+        return self
 
 
 class Decision(BaseModel):
@@ -90,6 +112,11 @@ class Decision(BaseModel):
         if any(ord(ch) < 32 for ch in value):
             raise ValueError("control characters are not allowed")
         return value
+
+
+def conversation(run: Run) -> dict:
+    return {"mode": run.mode, "model": run.model, "title": run.title, "request": run.request,
+            "ticket_id": run.ticket_id}
 
 
 class Console:
@@ -126,8 +153,16 @@ class Console:
     async def start(self, req: StartRequest) -> Run:
         if self.active() >= MAX_ACTIVE:
             raise HTTPException(429, f"{MAX_ACTIVE} rehearsals are already running. Try again in a moment.")
-        await self.live_get(f"/tickets/{req.ticket_id}")  # 404 for tickets that do not exist
-        task = f"Resolve support ticket {req.ticket_id}."
+        ticket = await self.live_get(f"/tickets/{req.ticket_id}") if req.ticket_id else None  # 404 if missing
+        if ticket:
+            title = f"Ticket {ticket['id']}: {ticket['subject']}"
+            request = req.message or f"Please resolve ticket {ticket['id']}."
+            task = f"Resolve support ticket {ticket['id']}."
+            if req.message:
+                task += f" The reviewer adds: {req.message}"
+        else:
+            title = req.message[:80]
+            request = task = req.message
         if req.mode == "simulated":
             if req.ticket_id != SIMULATION_TICKET:
                 raise HTTPException(422, f"The simulated compromised agent only runs on ticket {SIMULATION_TICKET}")
@@ -139,14 +174,15 @@ class Console:
             recording = json.loads(path.read_text(encoding="utf-8"))
             label = f"Replay of a recorded {recording.get('model', 'model')} run"
             model = ReplayModel(recording["transcript"], label)
+            task = f"Resolve support ticket {req.ticket_id}."  # a recording only fits the request it was made for
         else:
             if self.client is None:
                 raise HTTPException(503, "No model API key is configured")
             model, label = self.client, "Live model"
         rehearsal = await self.engine.rehearse(task, actor=label)
-        run = Run(rehearsal, req.mode, label)
+        run = Run(rehearsal, req.mode, label, title, request, req.ticket_id)
         self.runs[rehearsal.id] = run
-        run.emit("started", {"task": task, "mode": req.mode, "model": label})
+        run.emit("started", {"task": task, "request": request, "mode": req.mode, "model": label})
         run.task = asyncio.create_task(self._drive(run, model, task))
         return run
 
@@ -265,12 +301,10 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
     @app.get("/api/tickets")
     async def tickets(request: Request) -> list[dict]:
         c = con(request)
-        latest: dict[str, Run] = {}
-        for run in c.runs.values():
-            latest[run.rehearsal.task] = run
+        latest: dict[int, Run] = {run.ticket_id: run for run in c.runs.values() if run.ticket_id}
         rows = await c.live_get("/tickets?limit=50")
         for row in rows:
-            run = latest.get(f"Resolve support ticket {row['id']}.")
+            run = latest.get(row["id"])
             row["rehearsal"] = {"id": run.rehearsal.id, "state": str(run.rehearsal.state),
                                 "risk": run.rehearsal.review.risk if run.rehearsal.review else None} if run else None
         return rows
@@ -283,20 +317,21 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
 
     @app.get("/api/rehearsals")
     async def rehearsals(request: Request) -> list[dict]:
-        return [{"id": rid, "task": run.rehearsal.task, "mode": run.mode, "model": run.model,
+        return [{"id": rid, "title": run.title, "ticket_id": run.ticket_id, "mode": run.mode, "model": run.model,
                  "state": str(run.rehearsal.state), "created_at": run.rehearsal.created_at,
-                 "risk": run.rehearsal.review.risk if run.rehearsal.review else None}
+                 "risk": run.rehearsal.review.risk if run.rehearsal.review else None, "running": not run.done,
+                 "changes": len(run.rehearsal.review.changes) if run.rehearsal.review else None}
                 for rid, run in reversed(con(request).runs.items())]
 
     @app.post("/api/rehearsals", status_code=201)
     async def start(req: StartRequest, request: Request) -> dict:
         run = await con(request).start(req)
-        return {"id": run.rehearsal.id, "mode": run.mode, "model": run.model}
+        return {"id": run.rehearsal.id, "mode": run.mode, "model": run.model, "title": run.title}
 
     @app.get("/api/rehearsals/{rehearsal_id}")
     async def detail(rehearsal_id: str, request: Request) -> dict:
         run = con(request).get_run(rehearsal_id)
-        return {**rehearsal_dict(run.rehearsal), "mode": run.mode, "model": run.model, "running": not run.done}
+        return {**rehearsal_dict(run.rehearsal), **conversation(run), "running": not run.done}
 
     @app.get("/api/rehearsals/{rehearsal_id}/events")
     async def events(rehearsal_id: str, request: Request) -> StreamingResponse:
@@ -336,7 +371,7 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
                 await run.rehearsal.undo(by=decision.reviewer)
         except InvalidState as e:
             raise HTTPException(409, str(e)) from e
-        return {**rehearsal_dict(run.rehearsal), "mode": run.mode, "model": run.model, "running": False}
+        return {**rehearsal_dict(run.rehearsal), **conversation(run), "running": False}
 
     @app.post("/api/rehearsals/{rehearsal_id}/approve")
     async def approve(rehearsal_id: str, decision: Decision, request: Request) -> dict:
