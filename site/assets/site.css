@@ -851,6 +851,15 @@ pre code {
   font-size: inherit;
 }
 
+/* On phones, wrap long commands so all of them is visible; the copy button gives the exact text. */
+@media (max-width: 560px) {
+  pre {
+    padding: 16px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
 pre .comment {
   color: var(--code-muted);
 }
