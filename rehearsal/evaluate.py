@@ -87,7 +87,7 @@ def grade(ticket_id: int, review: Review, base_db: Path) -> list[str]:
 
 
 async def evaluate(runs: int, tickets: list[int], providers: list[Provider], out_dir: Path,
-                   prompt: str = "standard") -> dict:
+                   prompt: str = "standard", record_dir: Path | None = None) -> dict:
     config.load_env()
     cfg = config.load()
     tmp = Path(tempfile.mkdtemp(prefix="rehearsal-eval-"))
@@ -114,6 +114,13 @@ async def evaluate(runs: int, tickets: list[int], providers: list[Provider], out
                        "steps": agent.steps, "models": agent.models, "tokens": agent.tokens,
                        "seconds": round(time.monotonic() - started, 1), "summary": agent.summary}
                 results.append(row)
+                target_file = record_dir / f"ticket-{ticket_id}.json" if record_dir else None
+                if target_file and row["passed"] and not target_file.exists():
+                    record_dir.mkdir(parents=True, exist_ok=True)
+                    target_file.write_text(json.dumps({
+                        "ticket": ticket_id, "model": ", ".join(agent.models), "prompt": prompt,
+                        "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                        "summary": agent.summary, "transcript": agent.transcript}, indent=2), encoding="utf-8")
                 print(f"run {run} ticket {ticket_id}: {'PASS' if row['passed'] else 'FAIL'} "
                       f"risk={row['risk']} steps={row['steps']} {row['seconds']}s {','.join(agent.models)}"
                       + (f"  {problems}" if problems else ""), flush=True)
@@ -138,6 +145,8 @@ def main() -> None:
     parser.add_argument("--tickets", default=",".join(str(t) for t in STORIES))
     parser.add_argument("--providers", default="chain", help=f"chain (every free model) or a list of: {', '.join(PROVIDERS)}")
     parser.add_argument("--prompt", default="standard", choices=sorted(PROMPTS))
+    parser.add_argument("--record", action="store_true",
+                        help="save the first passing run of each ticket to demo/recordings for replay")
     args = parser.parse_args()
     if args.providers == "chain":
         providers = DEFAULT_CHAIN
@@ -147,7 +156,8 @@ def main() -> None:
     unknown = [t for t in tickets if t not in STORIES]
     if unknown:
         parser.error(f"unknown tickets {unknown}; choose from {list(STORIES)}")
-    asyncio.run(evaluate(args.runs, tickets, providers, config.load().runtime_dir / "eval", args.prompt))
+    record_dir = config.ROOT / "demo" / "recordings" if args.record else None
+    asyncio.run(evaluate(args.runs, tickets, providers, config.load().runtime_dir / "eval", args.prompt, record_dir))
 
 
 if __name__ == "__main__":

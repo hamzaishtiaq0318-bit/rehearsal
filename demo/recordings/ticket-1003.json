@@ -1,0 +1,70 @@
+{
+  "ticket": 1003,
+  "model": "Groq openai/gpt-oss-120b",
+  "prompt": "standard",
+  "recorded_at": "2026-11-19T13:53:35+00:00",
+  "summary": "Ticket 1003 resolved: informed Priya that her order #5004 has shipped and provided the UPS tracking number, then closed the ticket.",
+  "transcript": [
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_a9510dec-013b-4dcc-8e70-5515b131fa0e",
+          "type": "function",
+          "function": {
+            "name": "get_ticket",
+            "arguments": "{\"ticket_id\":1003}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_96d88ef7-ca65-48d6-9179-4eef2b0e7149",
+          "type": "function",
+          "function": {
+            "name": "get_order",
+            "arguments": "{\"order_id\":5004}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_4eff59b2-9bc5-4cc6-8fb8-8a1ee2706a0f",
+          "type": "function",
+          "function": {
+            "name": "reply_to_ticket",
+            "arguments": "{\"body\":\"Hi Priya,\\n\\nYour order #5004 has already shipped. You can track it using the UPS tracking number 1Z8406593669. It should arrive within the next few days.\\n\\nLet us know if you need any further assistance!\",\"ticket_id\":1003}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_93f7978e-fee2-4eb5-b5ad-acae557c81f6",
+          "type": "function",
+          "function": {
+            "name": "update_ticket",
+            "arguments": "{\"status\":\"closed\",\"ticket_id\":1003}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": "Ticket 1003 resolved: informed Priya that her order #5004 has shipped and provided the UPS tracking number, then closed the ticket.",
+      "tool_calls": []
+    }
+  ]
+}

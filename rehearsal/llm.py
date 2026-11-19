@@ -24,7 +24,6 @@ DEFAULT_COOLDOWN = 60  # seconds a busy model is skipped when it gives no retry 
 GEMINI_FOREIGN_SIGNATURE = "skip_thought_signature_validator"
 
 GROQ = "https://api.groq.com/openai/v1"
-CEREBRAS = "https://api.cerebras.ai/v1"
 OPENROUTER = "https://openrouter.ai/api/v1"
 GEMINI = "https://generativelanguage.googleapis.com/v1beta/openai"
 
@@ -47,18 +46,20 @@ GROQ_GPT_OSS = Provider("Groq", GROQ, "openai/gpt-oss-120b", "GROQ_API_KEY", REA
 GROQ_GPT_OSS_20B = Provider("Groq", GROQ, "openai/gpt-oss-20b", "GROQ_API_KEY", REASONING)
 GEMINI_FLASH = Provider("Gemini", GEMINI, "gemini-3.7-flash", "GEMINI_API_KEY")
 
-# Best tool callers first; every entry is free. Entries without a configured key are skipped.
+# Best tool callers first; every entry is free and needs no card. Entries without a key are skipped.
+# Free catalogues change often; a retired model answers 404 and is dropped for the session.
 DEFAULT_CHAIN = [
     GROQ_GPT_OSS,
-    Provider("Cerebras", CEREBRAS, "gpt-oss-120b", "CEREBRAS_API_KEY", REASONING),
     GROQ_GPT_OSS_20B,
-    Provider("OpenRouter", OPENROUTER, "openai/gpt-oss-120b:free", "OPENROUTER_API_KEY"),
+    Provider("OpenRouter", OPENROUTER, "nvidia/nemotron-3-ultra-550b-a55b:free", "OPENROUTER_API_KEY"),
     GEMINI_FLASH,
     Provider("Gemini", GEMINI, "gemini-3.8-flash", "GEMINI_API_KEY"),
+    Provider("OpenRouter", OPENROUTER, "google/gemma-4-31b-it:free", "OPENROUTER_API_KEY"),
     Provider("Gemini", GEMINI, "gemini-flash-latest", "GEMINI_API_KEY"),
+    Provider("OpenRouter", OPENROUTER, "nvidia/nemotron-3.5-super-vl:free", "OPENROUTER_API_KEY"),
     Provider("Gemini", GEMINI, "gemini-3.5-flash", "GEMINI_API_KEY"),
-    Provider("OpenRouter", OPENROUTER, "openai/gpt-oss-20b:free", "OPENROUTER_API_KEY"),
     Provider("Gemini", GEMINI, "gemini-3.5-flash-lite", "GEMINI_API_KEY"),
+    Provider("OpenRouter", OPENROUTER, "google/gemma-4-26b-a4b-it:free", "OPENROUTER_API_KEY"),
     Provider("Gemini", GEMINI, "gemini-3.1-flash-lite", "GEMINI_API_KEY"),
     Provider("Groq", GROQ, "qwen/qwen3.8-27b", "GROQ_API_KEY"),
 ]

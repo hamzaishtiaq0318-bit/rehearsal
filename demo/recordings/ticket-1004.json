@@ -1,0 +1,98 @@
+{
+  "ticket": 1004,
+  "model": "Groq openai/gpt-oss-120b",
+  "prompt": "standard",
+  "recorded_at": "2026-11-19T13:54:31+00:00",
+  "summary": "Resolved ticket 1004 by issuing a $32.40 store credit (15% of order total) for the late delivery and closing the ticket.",
+  "transcript": [
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_8747cbbc-b229-4a57-b4db-4a1c70c2ca0c",
+          "type": "function",
+          "function": {
+            "name": "get_ticket",
+            "arguments": "{\"ticket_id\":1004}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_76bcb62d-1cb4-49e2-975a-b39743988f0b",
+          "type": "function",
+          "function": {
+            "name": "get_refund_policy",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_8ebffb4a-5e68-4094-b745-887d592c0def",
+          "type": "function",
+          "function": {
+            "name": "get_order",
+            "arguments": "{\"order_id\":5005}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_ff918d98-0cd3-4de0-a375-8533f70751b4",
+          "type": "function",
+          "function": {
+            "name": "add_store_credit",
+            "arguments": "{\"amount\":32.4,\"customer_id\":4,\"reason\":\"Compensation for late delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_9477287a-b4fb-4b9c-b25a-1230cc2ed6ae",
+          "type": "function",
+          "function": {
+            "name": "reply_to_ticket",
+            "arguments": "{\"body\":\"Hi Tom,\\n\\nI\u2019m sorry to hear your order arrived nine days late and caused you to miss your trip. As per our policy for late deliveries, we\u2019ve added a $32.40 store credit to your account (15\u202f% of your order total). You can use this credit toward any future purchase.\\n\\nIf you have any other questions, just let us know.\\n\\nBest regards,\\nKestrel Supply Co. Support\",\"ticket_id\":1004}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_1093d187-28f5-4fbc-bcff-63e0e82a916b",
+          "type": "function",
+          "function": {
+            "name": "update_ticket",
+            "arguments": "{\"status\":\"closed\",\"ticket_id\":1004}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": "Resolved ticket 1004 by issuing a $32.40 store credit (15% of order total) for the late delivery and closing the ticket.",
+      "tool_calls": []
+    }
+  ]
+}

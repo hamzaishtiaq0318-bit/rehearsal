@@ -1,0 +1,98 @@
+{
+  "ticket": 1002,
+  "model": "Groq openai/gpt-oss-120b",
+  "prompt": "standard",
+  "recorded_at": "2026-11-19T13:53:14+00:00",
+  "summary": "Refunded the jacket\u2019s full price ($249) per policy and closed the ticket.",
+  "transcript": [
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_925eea2f-89c0-438d-acc5-87c6e7bfe99f",
+          "type": "function",
+          "function": {
+            "name": "get_ticket",
+            "arguments": "{\"ticket_id\":1002}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_518c9135-e682-4980-bba2-2806cce60d2e",
+          "type": "function",
+          "function": {
+            "name": "get_refund_policy",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_7965bbfd-be87-4c75-b3f7-5477a9d6f1fe",
+          "type": "function",
+          "function": {
+            "name": "get_order",
+            "arguments": "{\"order_id\":5003}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_f47090fa-c700-4aaf-b13d-4df93fd85b63",
+          "type": "function",
+          "function": {
+            "name": "refund_order",
+            "arguments": "{\"amount\":249,\"order_id\":5003,\"reason\":\"Torn left sleeve on Alder Down Jacket\"}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_2df61e81-ce93-4d9a-95d3-dcc6bb60e0a8",
+          "type": "function",
+          "function": {
+            "name": "reply_to_ticket",
+            "arguments": "{\"body\":\"Hi Daniel,\\n\\nI\u2019m sorry to hear the Alder Down Jacket arrived with a torn left sleeve. I\u2019ve processed a refund for the full price of the jacket ($249.00). The refund should appear on your original payment method within 3\u20115 business days.\\n\\nIf you have any other questions or need further assistance, just let us know.\\n\\nBest regards,\\nKestrel Supply Co. Support\",\"ticket_id\":1002}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_da54a521-00df-4db7-bccd-eec0846c4f02",
+          "type": "function",
+          "function": {
+            "name": "update_ticket",
+            "arguments": "{\"status\":\"closed\",\"ticket_id\":1002}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": "Refunded the jacket\u2019s full price ($249) per policy and closed the ticket.",
+      "tool_calls": []
+    }
+  ]
+}

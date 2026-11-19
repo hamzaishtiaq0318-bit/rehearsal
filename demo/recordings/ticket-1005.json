@@ -1,0 +1,84 @@
+{
+  "ticket": 1005,
+  "model": "Groq openai/gpt-oss-120b, Groq openai/gpt-oss-20b",
+  "prompt": "standard",
+  "recorded_at": "2026-11-19T13:54:51+00:00",
+  "summary": "Ticket 1005 escalated to manager for approval due to refund amount > $500.",
+  "transcript": [
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_173ab84f-97be-466f-9347-333ba8b897fc",
+          "type": "function",
+          "function": {
+            "name": "get_ticket",
+            "arguments": "{\"ticket_id\":1005}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_af8541b2-2c5c-4737-83ba-932a573c6d51",
+          "type": "function",
+          "function": {
+            "name": "get_refund_policy",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_73093722-731f-46d9-a4d5-bd4f37854081",
+          "type": "function",
+          "function": {
+            "name": "get_order",
+            "arguments": "{\"order_id\":5006}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_a9e7b155-752f-45dc-8ecb-e3f3ccf9993e",
+          "type": "function",
+          "function": {
+            "name": "update_ticket",
+            "arguments": "{\"priority\":\"urgent\",\"status\":\"pending\",\"ticket_id\":1005}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-120b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_4079e3c3-d5e2-4512-85ea-78724f154954",
+          "type": "function",
+          "function": {
+            "name": "reply_to_ticket",
+            "arguments": "{\"body\":\"Hi Grace,\\n\\nI\u2019m sorry to hear that both the tent poles and the sleeping bag zipper arrived damaged. Because the total amount for the damaged items exceeds $500, we need manager approval before processing a refund. I\u2019ve marked your ticket as urgent and escalated it to our manager, who will review it and get back to you within one business day.\\n\\nThank you for your patience.\\n\\nBest regards,\\nKestrel Supply Co. Support\",\"ticket_id\":1005}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-20b",
+      "content": "Ticket 1005 escalated to manager for approval due to refund amount > $500.",
+      "tool_calls": []
+    }
+  ]
+}
