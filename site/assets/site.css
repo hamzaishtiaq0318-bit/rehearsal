@@ -422,6 +422,10 @@ pre,
   text-transform: uppercase;
 }
 
+@media (max-width: 480px) {
+  .pill-extra { display: none; }
+}
+
 .lead {
   font-size: clamp(18px, 1.7vw, 21px);
   line-height: 1.6;
