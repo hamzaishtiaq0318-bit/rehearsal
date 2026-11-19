@@ -100,8 +100,13 @@ The agent sees the same ten tools plus two more:
 
 Every other call runs on a rehearsal copy, exactly as with the built in agent. The proxy also
 serves the console (on port 8000, or a free port if that is taken), and the link that can approve
-is opened in the browser, never returned to the agent. Set `REHEARSAL_OPEN_BROWSER=0` on a machine
-without a browser; the approval link then goes to the MCP client's log.
+is opened in the browser, never returned to the agent or written to a log. On a machine without a
+browser, add `REHEARSAL_OPEN_BROWSER=0` and a `REHEARSAL_TOKEN` of your choosing to the entry's
+`env`; the log then names the rehearsal waiting for review, and you open the console with your token.
+
+What the agent says it was asked is shown in its own message, labelled as its report, never as the
+user's words. Rehearsal guards the MCP tool channel; an agent that also has shell access to the same
+machine is outside what any local approval step can contain.
 
 Run either the proxy or `python -m rehearsal.server`, not both: whichever starts first owns the
 live app.

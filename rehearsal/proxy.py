@@ -123,9 +123,12 @@ class Bridge:
         if run is None:
             return (f"There is nothing to submit: no tool has been called since the last review. "
                     f"Call {STATUS} to hear the decision on that one."), True
-        request = _text(args.get("request"), 500) or run.request
+        # The agent's account of the request is a claim, not the user's words: it stays in the agent's
+        # message, labelled, and never replaces the neutral title the reviewer trusts.
+        claimed = _text(args.get("request"), 500)
         summary = _text(args.get("summary"), 2000, lines=True)
-        run.title, run.request = request[:80], request
+        if claimed:
+            summary = f"**Request, as the agent reported it:** {claimed}\n\n{summary}"
         run.emit("agent_finished", {"summary": summary, "finished": True, "models": [self.client],
                                     "steps": len(run.rehearsal.calls), "error": None})
         try:
@@ -147,7 +150,9 @@ class Bridge:
             return f"Submitted. Nothing you did changes live data, so there is nothing to approve. Record: {link}", False
         approve_link = f"{self.console_url}/?token={self._token}#/c/{run.rehearsal.id}"
         if not await asyncio.to_thread(self._open, approve_link):
-            print(f"Review and approve here: {approve_link}", file=sys.stderr)
+            # Never log the token: an agent that can read the client's log could approve its own work.
+            print(f"Rehearsal {run.rehearsal.id} is waiting for review at {link}. To approve, open "
+                  f"{self.console_url}/?token=<your REHEARSAL_TOKEN>", file=sys.stderr)
         review = details["review"]
         lines = ["Submitted for review. Nothing has reached live data yet.", f"Risk: {review['risk']}.",
                  "Waiting for approval:", *(f"- {a}" for a in details["actions"])]
@@ -259,7 +264,8 @@ def main() -> None:
                  "env": {"PYTHONPATH": str(config_mod.ROOT)}}
         print(json.dumps({"mcpServers": {"rehearsal": entry}}, indent=2))
         return
-    # REHEARSAL_OPEN_BROWSER=0 (headless machines): approval links go to the MCP client's log instead.
+    # REHEARSAL_OPEN_BROWSER=0 (headless machines): the log names the rehearsal waiting for review, and the
+    # person opens the console with a REHEARSAL_TOKEN they chose. The token itself is never logged.
     quiet = os.environ.get("REHEARSAL_OPEN_BROWSER") == "0"
     asyncio.run(serve(open_review=(lambda url: False) if quiet else webbrowser.open))
 

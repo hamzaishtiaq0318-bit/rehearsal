@@ -41,13 +41,25 @@ async def test_outside_agent_works_on_a_copy_until_a_person_approves(bridge, eng
 
     run = bridge.last
     assert run.done and run.mode == "external" and run.rehearsal.state == State.READY
-    assert run.title == "Refund the torn jacket on ticket 1002"
+    # The agent's claim about the request never takes the place of trusted text the reviewer relies on.
+    assert run.title == "Task from MCP client" and "torn jacket" not in run.request
+    finished = next(e["data"] for e in run.events if e["kind"] == "agent_finished")
+    assert finished["summary"].startswith("**Request, as the agent reported it:** Refund the torn jacket")
     assert [e["kind"] for e in run.events][-3:] == ["agent_finished", "review", "done"]
     assert "Still waiting" in (await bridge.call("review_status", {}))[0]
 
     await run.rehearsal.approve(by="Test reviewer")
     assert (await bridge.call("review_status", {}))[0].startswith("Decision: applied")
     assert await live_order(engine, 5003) != before
+
+
+async def test_token_never_reaches_the_log_when_no_browser_opens(engine, capsys):
+    b = proxy.Bridge(server.Console(engine, None), "http://127.0.0.1:9", "secret-token", lambda url: False)
+    await b.call("refund_order", {"order_id": 5003, "amount": 249, "reason": "Torn sleeve"})
+    text, error = await b.call("submit_for_review", {"request": "r", "summary": "s"})
+    log = capsys.readouterr().err
+    assert not error and b.last.rehearsal.id in log
+    assert "secret-token" not in log and "secret-token" not in text
 
 
 async def test_blocked_arguments_are_recorded_for_the_reviewer(bridge):
