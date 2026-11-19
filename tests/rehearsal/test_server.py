@@ -40,9 +40,10 @@ def jacket_model():
 @pytest.fixture()
 async def api(engine):
     console = server.Console(engine, jacket_model())
-    app = server.create_app(console)
+    app = server.create_app(console, token="test-token", allowed_hosts=["test"], public_demo=False)
     async with app.router.lifespan_context(app):
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test",
+                                     headers={server.TOKEN_HEADER: "test-token"}) as client:
             client.console = console
             yield client
     await console.aclose()
@@ -107,10 +108,11 @@ async def test_security_headers_are_set(api):
     ({"ticket_id": 1002, "mode": "simulated"}, 422),  # the simulation only targets the injected ticket
     ({"ticket_id": 99999}, 404),
     ({"ticket_id": -1}, 422),
-    ({"ticket_id": 1002, "mode": "replay"}, 404),  # no recording yet
+    ({"ticket_id": 1002, "mode": "replay"}, 404),  # no recording for this ticket
     ({"ticket_id": 1002, "mode": "shell"}, 422),
 ])
-async def test_start_validates_input(api, body, code):
+async def test_start_validates_input(api, body, code, tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "RECORDINGS", tmp_path)  # independent of recordings in the repo
     assert (await api.post("/api/rehearsals", json=body)).status_code == code
 
 
@@ -135,3 +137,26 @@ async def test_reset_restores_fresh_demo_data(api):
     assert (await api.post("/api/reset", json={})).status_code == 200
     assert (await api.get("/api/tickets/1002")).json()["status"] == "open"
     assert (await api.get("/api/rehearsals")).json() == []
+
+
+async def test_writes_need_the_launch_token(api):
+    r = await api.post("/api/rehearsals", json={"ticket_id": 1002}, headers={server.TOKEN_HEADER: "wrong"})
+    assert r.status_code == 401
+    del api.headers[server.TOKEN_HEADER]
+    assert (await api.post("/api/reset", json={})).status_code == 401
+    assert (await api.get("/api/status")).status_code == 200  # reads stay open on the allowed host
+
+
+async def test_requests_for_other_hosts_are_refused(api):
+    r = await api.get("/api/status", headers={"host": "attacker.example"})
+    assert r.status_code == 400
+
+
+async def test_public_demo_mode_needs_no_token(engine):
+    console = server.Console(engine, jacket_model())
+    app = server.create_app(console, allowed_hosts=["test"], public_demo=True)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            assert (await client.post("/api/reset", json={})).status_code == 200
+            assert (await client.get("/api/status")).json()["public_demo"] is True
+    await console.aclose()

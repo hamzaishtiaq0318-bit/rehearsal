@@ -1,0 +1,84 @@
+{
+  "ticket": 1006,
+  "model": "Groq openai/gpt-oss-20b",
+  "prompt": "standard",
+  "recorded_at": "2026-11-19T13:55:27+00:00",
+  "summary": "Ticket 1006 closed after addressing the customer's question about the bottle lid.",
+  "transcript": [
+    {
+      "provider": "Groq openai/gpt-oss-20b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_5bb86d83-0430-4c7d-ab27-15bdd2b96643",
+          "type": "function",
+          "function": {
+            "name": "get_ticket",
+            "arguments": "{\"ticket_id\":1006}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-20b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_07c565c6-cea6-449c-99b3-04e360c69dd6",
+          "type": "function",
+          "function": {
+            "name": "get_refund_policy",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-20b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_31a2a0c5-b76d-4a5d-a6ac-bf0f1dd9157c",
+          "type": "function",
+          "function": {
+            "name": "get_order",
+            "arguments": "{\"order_id\":5007}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-20b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_dd38f52f-bb37-44c0-a3db-c31a3cdb805b",
+          "type": "function",
+          "function": {
+            "name": "reply_to_ticket",
+            "arguments": "{\"body\":\"Hi Victor,\\n\\nThanks for reaching out. The Fieldstone Bottle 1L typically comes with a blue lid. If you received a grey lid, please let us know and we\u2019ll arrange a replacement or refund for the lid.\\n\\nLet me know if you\u2019d like to proceed with a replacement or if you have any other questions.\\n\\nBest regards,\\nKestrel Support\",\"ticket_id\":1006}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-20b",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_0905aef9-77c9-471e-902d-8ddc993c6bda",
+          "type": "function",
+          "function": {
+            "name": "update_ticket",
+            "arguments": "{\"status\":\"closed\",\"ticket_id\":1006}"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "Groq openai/gpt-oss-20b",
+      "content": "Ticket 1006 closed after addressing the customer's question about the bottle lid.",
+      "tool_calls": []
+    }
+  ]
+}

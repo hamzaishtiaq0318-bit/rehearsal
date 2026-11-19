@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import secrets
 import tempfile
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -15,6 +16,7 @@ from typing import Any, Literal
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
@@ -35,6 +37,8 @@ WEB_DIST = ROOT / "web" / "dist"
 RECORDINGS = ROOT / "demo" / "recordings"
 MAX_ACTIVE = int(os.environ.get("REHEARSAL_MAX_ACTIVE", "3"))
 SIMULATION_TICKET = 1006
+TOKEN_HEADER = "X-Rehearsal-Token"
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
 
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
@@ -179,8 +183,19 @@ class Console:
         self.engine.audit.write("demo_reset", by="console")
 
 
-def create_app(console: Console | None = None) -> FastAPI:
-    """Build the app. Tests pass a ready Console; production builds one in the lifespan."""
+def create_app(console: Console | None = None, *, token: str | None = None, allowed_hosts: list[str] | None = None,
+               public_demo: bool | None = None) -> FastAPI:
+    """Build the app. Tests pass a ready Console; production builds one in the lifespan.
+
+    Every write needs the launch token (like Jupyter) unless public demo mode is switched on, and only
+    requests addressed to an allowed host are served, which stops DNS rebinding attacks from a web page.
+    """
+    if public_demo is None:
+        public_demo = os.environ.get("REHEARSAL_PUBLIC_DEMO") == "1"
+    token = token or os.environ.get("REHEARSAL_TOKEN") or secrets.token_urlsafe(24)
+    if allowed_hosts is None:
+        extra = [h.strip() for h in os.environ.get("REHEARSAL_ALLOWED_HOSTS", "").split(",") if h.strip()]
+        allowed_hosts = [*LOOPBACK, *extra]
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -207,6 +222,8 @@ def create_app(console: Console | None = None) -> FastAPI:
 
     app = FastAPI(title="Rehearsal", version="1.0.0", lifespan=lifespan,
                   docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json")
+    app.state.token = token
+    app.state.public_demo = public_demo
 
     @app.middleware("http")
     async def guard_requests(request: Request, call_next):
@@ -214,6 +231,9 @@ def create_app(console: Console | None = None) -> FastAPI:
             # JSON only: an HTML form on another site cannot send this content type without a CORS preflight.
             if not request.headers.get("content-type", "").startswith("application/json"):
                 return JSONResponse({"detail": "Send JSON with Content-Type: application/json"}, status_code=415)
+            if not public_demo and not secrets.compare_digest(request.headers.get(TOKEN_HEADER, ""), token):
+                return JSONResponse({"detail": "Open the console with the link printed when Rehearsal started."},
+                                    status_code=401)
         response = await call_next(request)
         csp_exempt = request.url.path.startswith("/api/docs")
         for name, value in SECURITY_HEADERS.items():
@@ -229,6 +249,7 @@ def create_app(console: Console | None = None) -> FastAPI:
         c = con(request)
         return {
             "target": c.engine.target.name,
+            "public_demo": public_demo,
             "server_file": c.engine.server_file.name,
             "tools": [{"name": t.name, "description": t.description, "writes": t.writes, "method": t.method,
                        "path": t.path} for t in c.engine.tools.values()],
@@ -335,6 +356,9 @@ def create_app(console: Console | None = None) -> FastAPI:
         await con(request).reset()
         return {"ok": True}
 
+    # Added last so it runs first: anything not addressed to an allowed host is refused outright.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+
     if WEB_DIST.exists():
         app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")
 
@@ -358,6 +382,13 @@ def main() -> None:
 
     host = os.environ.get("REHEARSAL_HOST", "127.0.0.1")
     port = int(os.environ.get("REHEARSAL_PORT", os.environ.get("PORT", "8000")))
+    if app.state.public_demo:
+        print("PUBLIC DEMO MODE: anyone who can reach this server can approve changes to the demo data.")
+    else:
+        print()
+        print(f"  Rehearsal console: http://127.0.0.1:{port}/?token={app.state.token}")
+        print("  The token in this link authorises approvals. Do not share it.")
+        print()
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 
