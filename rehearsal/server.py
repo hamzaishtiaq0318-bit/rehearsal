@@ -235,6 +235,8 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
                 return JSONResponse({"detail": "Open the console with the link printed when Rehearsal started."},
                                     status_code=401)
         response = await call_next(request)
+        if request.url.path.startswith("/assets/"):  # file names carry a content hash
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         csp_exempt = request.url.path.startswith("/api/docs")
         for name, value in SECURITY_HEADERS.items():
             if not (csp_exempt and name == "Content-Security-Policy"):
@@ -300,8 +302,11 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
     async def events(rehearsal_id: str, request: Request) -> StreamingResponse:
         run = con(request).get_run(rehearsal_id)
 
+        last_seen = request.headers.get("last-event-id", "")
+        resume_from = int(last_seen) + 1 if last_seen.isdigit() else 0
+
         async def stream():
-            sent = 0
+            sent = min(resume_from, len(run.events))
             while True:
                 while sent < len(run.events):
                     event = run.events[sent]
@@ -369,7 +374,8 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
             candidate = (WEB_DIST / path).resolve()
             if path and candidate.is_file() and WEB_DIST.resolve() in candidate.parents:
                 return FileResponse(candidate)
-            return FileResponse(WEB_DIST / "index.html")
+            # index.html must always be revalidated, or a browser keeps pointing at an old build.
+            return FileResponse(WEB_DIST / "index.html", headers={"Cache-Control": "no-cache"})
 
     return app
 

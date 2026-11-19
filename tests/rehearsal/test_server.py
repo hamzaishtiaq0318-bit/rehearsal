@@ -160,3 +160,11 @@ async def test_public_demo_mode_needs_no_token(engine):
             assert (await client.post("/api/reset", json={})).status_code == 200
             assert (await client.get("/api/status")).json()["public_demo"] is True
     await console.aclose()
+
+
+async def test_event_stream_resumes_after_a_reconnect(api):
+    rid = (await api.post("/api/rehearsals", json={"ticket_id": 1002})).json()["id"]
+    full = await follow(api, rid)
+    r = await api.get(f"/api/rehearsals/{rid}/events", headers={"last-event-id": "2"})
+    resumed = [line.split(": ", 1)[1] for line in r.text.splitlines() if line.startswith("event: ")]
+    assert resumed == full[3:]
