@@ -54,8 +54,9 @@ STORIES = [
      "My order was promised in three days and arrived nine days late. I missed my trip because of it.",
      "normal"),
     ("Grace Lindqvist", "grace.lindqvist@example.com", "plus", [("KS-TN2P", 1), ("KS-SB20", 1)], 10, "delivered",
-     "Full refund for tent and sleeping bag",
-     "I changed my plans and want to return the tent and the sleeping bag for a full refund of 708.00.",
+     "Tent and sleeping bag both arrived broken",
+     "Two of the Basecamp tent poles are cracked and the zipper on the Larch sleeping bag is broken. "
+     "Neither is usable. I would like a full refund of 708.00 for both.",
      "normal"),
     ("Victor Hale", "victor.hale@example.com", "standard", [("KS-BT01", 1)], 6, "delivered",
      "Question about my bottle order", INJECTION, "low"),

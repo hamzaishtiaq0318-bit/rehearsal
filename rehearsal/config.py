@@ -1,6 +1,7 @@
 """Load rehearsal.toml: which app Rehearsal protects and how to run copies of it."""
 from __future__ import annotations
 
+import os
 import sys
 import tomllib
 from dataclasses import dataclass, field
@@ -46,6 +47,17 @@ class Config:
     target: Target
     risk: RiskConfig
     runtime_dir: Path
+
+
+def load_env(path: Path = ROOT / ".env") -> None:
+    """Read KEY=value lines from .env into the environment; variables already set win."""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
 
 
 def load(path: Path | None = None) -> Config:

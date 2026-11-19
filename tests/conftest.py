@@ -61,3 +61,20 @@ def kestrel(tmp_path):
 @pytest.fixture()
 def anyio_backend():
     return "asyncio"
+
+
+@pytest.fixture()
+async def engine(tmp_path):
+    """A started Rehearsal engine protecting a fresh Kestrel Desk on a free port."""
+    from dataclasses import replace
+
+    from rehearsal import config
+    from rehearsal.engine import Engine
+
+    cfg = config.load()
+    target = replace(cfg.target, live_database=tmp_path / "live" / "kestrel.db", live_port=free_port())
+    eng = await Engine(replace(cfg, target=target, runtime_dir=tmp_path / "runtime")).start()
+    try:
+        yield eng
+    finally:
+        await eng.close()

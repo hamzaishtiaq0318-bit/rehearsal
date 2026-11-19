@@ -19,6 +19,7 @@ class CallResult:
     ok: bool
     text: str  # compact JSON or error text, exactly what the model sees
     items: list[Any] = field(default_factory=list)  # parsed content blocks
+    warning: str | None = None  # set by Rehearsal when the result looks like a prompt injection
 
 
 def _parse(text: str) -> Any:

@@ -3,28 +3,14 @@ import asyncio
 import json
 import re
 import sqlite3
-from dataclasses import replace
 
 import pytest
 import requests
 
-from conftest import free_port
-from rehearsal import config
-from rehearsal.engine import Engine, InvalidState, State
+from rehearsal.engine import InvalidState, State
 from rehearsal.toolserver import CallResult
 
 pytestmark = pytest.mark.anyio
-
-
-@pytest.fixture()
-async def engine(tmp_path):
-    cfg = config.load()
-    target = replace(cfg.target, live_database=tmp_path / "live" / "kestrel.db", live_port=free_port())
-    eng = await Engine(replace(cfg, target=target, runtime_dir=tmp_path / "runtime")).start()
-    try:
-        yield eng
-    finally:
-        await eng.close()
 
 
 def live(engine, sql, *args):
@@ -150,7 +136,7 @@ async def test_replay_failure_part_way_restores_live(engine, monkeypatch):
 
     monkeypatch.setattr(engine.live_server, "call", flaky)
     outcome = await r.approve(by="reviewer")
-    assert outcome.state == State.FAILED and "Live data was restored" in outcome.message
+    assert outcome.state == State.FAILED and "restored and checked" in outcome.message
     assert live(engine, "SELECT COUNT(*) FROM refunds WHERE order_id = 5003") == [(0,)]
 
 

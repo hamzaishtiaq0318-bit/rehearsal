@@ -32,8 +32,13 @@ def money_out(changes: list[RowChange], target: Target) -> list[tuple[RowChange,
 
 
 def assess(changes: list[RowChange], owners: list[Any], failed_calls: int, blocked_calls: int,
-           target: Target, cfg: RiskConfig) -> list[Flag]:
+           target: Target, cfg: RiskConfig, injections: list[tuple] = ()) -> list[Flag]:
     flags: list[Flag] = []
+
+    if injections:
+        index, tool, score, excerpt = max(injections, key=lambda i: i[2])
+        flags.append(Flag("high", "Agent read text that looks like a prompt injection",
+                          f"Call {index} ({tool}), Prompt Guard score {score:.2f}: \"{excerpt}\""))
 
     payments = money_out(changes, target)
     if payments:
