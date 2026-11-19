@@ -1,10 +1,10 @@
 import { ArrowUp, Loader2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
-import type { RehearsalDetail, Status } from "../api";
+import type { StartMode, Status } from "../api";
 import { MODES } from "./words";
 
-type Mode = RehearsalDetail["mode"];
+type Mode = StartMode;
 
 export interface ComposerSubmit {
   message: string;

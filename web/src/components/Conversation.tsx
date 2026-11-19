@@ -258,7 +258,7 @@ export function Conversation({ id, status, onChanged }: Props) {
         </span>
         <div className="agent-body">
           <p className="agent-name">
-            Rehearsal agent <span className="agent-model">{detail?.model ?? ""}</span>
+            {detail?.mode === "external" ? "Connected agent" : "Rehearsal agent"} <span className="agent-model">{detail?.model ?? ""}</span>
           </p>
 
           <div className="activity">

@@ -41,9 +41,17 @@ class AppProcess:
         return f"http://127.0.0.1:{self.port}"
 
     async def start(self, timeout: float = 20) -> "AppProcess":
+        # Otherwise the health check below could be answered by a stale copy still holding the port.
+        with socket.socket() as s:
+            if s.connect_ex(("127.0.0.1", self.port)) == 0:
+                raise RuntimeError(f"Port {self.port} is already in use, so {self.target.name} cannot start there. "
+                                   "Is another copy of Rehearsal running? Stop it first.")
         command = self.target.render(self.target.command, port=self.port, database=self.database)
         self._log = open(self.log_path, "ab") if self.log_path else subprocess.DEVNULL
+        # stdin=DEVNULL: an inherited stdin can be the MCP pipe in proxy mode, and on Windows a child that
+        # shares it blocks at startup while the parent waits to read from it.
         self._proc = subprocess.Popen(command, cwd=self.target.app_dir, env=app_env(self.target, self.database),
+                                      stdin=subprocess.DEVNULL,
                                       stdout=self._log, stderr=subprocess.STDOUT)
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
@@ -83,4 +91,4 @@ def seed_database(target: Target, database: Path) -> None:
         return
     database.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(target.render(target.seed_command, database=database), cwd=target.app_dir,
-                   env=app_env(target, database), check=True, capture_output=True)
+                   env=app_env(target, database), check=True, capture_output=True, stdin=subprocess.DEVNULL)

@@ -7,6 +7,7 @@ from typing import Any, Awaitable, Callable
 
 from .engine import Rehearsal
 from .llm import ChatClient, LLMError, Reply, ToolCall
+from .toolserver import CallResult
 
 SYSTEM_PROMPT = """You are the customer support agent for Kestrel Supply Co., an outdoor gear store.
 You resolve one support ticket at a time with the tools provided.
@@ -53,6 +54,13 @@ def tool_specs(rehearsal: Rehearsal) -> list[dict]:
     return [{"type": "function", "function": {"name": t.name, "description": t.description,
                                               "parameters": t.agent_schema}}
             for t in rehearsal.engine.tools.values()]
+
+
+def tool_message(result: CallResult) -> str:
+    """What the agent reads back from a tool: the result, capped, with any injection warning first."""
+    content = result.text if len(result.text) <= MAX_RESULT_CHARS else \
+        result.text[:MAX_RESULT_CHARS] + " ... (truncated)"
+    return f"{result.warning}\n\n{content}" if result.warning else content
 
 
 def _parse_args(raw: str) -> tuple[dict[str, Any] | None, str | None]:
@@ -103,10 +111,7 @@ async def run_agent(rehearsal: Rehearsal, client: ChatClient, task: str, *, max_
                 result = rehearsal.record_blocked(call.name, {"raw": call.arguments[:500]}, error)
             else:
                 result = await rehearsal.call(call.name, args)
-            content = result.text if len(result.text) <= MAX_RESULT_CHARS else \
-                result.text[:MAX_RESULT_CHARS] + " ... (truncated)"
-            if result.warning:
-                content = f"{result.warning}\n\n{content}"
+            content = tool_message(result)
             messages.append({"role": "tool", "tool_call_id": call.id, "content": content})
             await emit("tool_result", {"index": len(rehearsal.calls), "tool": call.name, "ok": result.ok,
                                        "text": content[:1500], "warning": result.warning})

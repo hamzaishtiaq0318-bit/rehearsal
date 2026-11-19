@@ -73,6 +73,39 @@ Claude Desktop (Settings, Developer, Edit Config) or Cursor (Settings, MCP):
 
 The generated file needs Python 3.12 or newer and `mcp<2` (see below).
 
+### Safer: the same tools through Rehearsal
+
+Connected directly, every write lands on live data the moment the agent makes it. To put a person
+in the loop, swap that entry for Rehearsal's MCP proxy. `python -m rehearsal.proxy --print-config`
+prints the entry with your paths filled in:
+
+```json
+{
+  "mcpServers": {
+    "rehearsal": {
+      "command": "<repo>/.venv/Scripts/python.exe",
+      "args": ["-m", "rehearsal.proxy"],
+      "env": { "PYTHONPATH": "<repo>" }
+    }
+  }
+}
+```
+
+The agent sees the same ten tools plus two more:
+
+| Tool | What it does |
+|---|---|
+| `submit_for_review` | Ends the task. The agent passes the user's request and a short summary; a person sees the exact changes in the Rehearsal console, which opens in their browser |
+| `review_status` | Tells the agent whether the person approved, rejected or is still deciding |
+
+Every other call runs on a rehearsal copy, exactly as with the built in agent. The proxy also
+serves the console (on port 8000, or a free port if that is taken), and the link that can approve
+is opened in the browser, never returned to the agent. Set `REHEARSAL_OPEN_BROWSER=0` on a machine
+without a browser; the approval link then goes to the MCP client's log.
+
+Run either the proxy or `python -m rehearsal.server`, not both: whichever starts first owns the
+live app.
+
 ## Synapse behaviour we found and worked around
 
 Found while building with Synapse CLI 0.1.9 on Windows. Each one is handled in Rehearsal and

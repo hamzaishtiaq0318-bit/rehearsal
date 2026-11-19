@@ -2,6 +2,9 @@
 
 export type Risk = "high" | "medium" | "low";
 
+/** How the console can start a run. Runs from outside agents over MCP show up as "external". */
+export type StartMode = "agent" | "simulated" | "replay";
+
 export interface Tool {
   name: string;
   description: string;
@@ -99,7 +102,7 @@ export interface RehearsalDetail {
   replay: number[];
   review: { risk: Risk; money_out: string; flags: Flag[]; changes: Change[] } | null;
   outcome: { state: string; message: string; verified: boolean } | null;
-  mode: "agent" | "simulated" | "replay";
+  mode: StartMode | "external";
   model: string;
   running: boolean;
 }
@@ -186,7 +189,7 @@ export const api = {
   ticket: (id: number) => request<TicketDetail>(`/api/tickets/${id}`),
   rehearsal: (id: string) => request<RehearsalDetail>(`/api/rehearsals/${encodeURIComponent(id)}`),
   conversations: () => request<ConversationRow[]>("/api/rehearsals"),
-  start: (body: { ticket_id?: number; message?: string; mode: RehearsalDetail["mode"] }) =>
+  start: (body: { ticket_id?: number; message?: string; mode: StartMode }) =>
     request<{ id: string; title: string }>("/api/rehearsals", body),
   decide: (id: string, decision: Decision, reviewer: string, reason = "") =>
     request<RehearsalDetail>(`/api/rehearsals/${encodeURIComponent(id)}/${decision}`, { reviewer, reason }),

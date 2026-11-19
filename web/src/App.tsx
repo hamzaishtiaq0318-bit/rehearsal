@@ -1,7 +1,7 @@
 import { CircleAlert, PanelLeftOpen, ShieldAlert, Wrench } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import type { ConversationRow, RehearsalDetail, Status, TicketRow } from "./api";
+import type { ConversationRow, StartMode, Status, TicketRow } from "./api";
 import { api, errorMessage, hasToken } from "./api";
 import { AuditView } from "./components/AuditView";
 import type { ComposerSubmit } from "./components/Composer";
@@ -46,7 +46,7 @@ interface StartProps {
   tickets: TicketRow[];
   canSend: boolean;
   busy: boolean;
-  onStart: (body: { ticket_id?: number; message?: string; mode: RehearsalDetail["mode"] }) => void;
+  onStart: (body: { ticket_id?: number; message?: string; mode: StartMode }) => void;
 }
 
 function NewChat({ status, tickets, canSend, busy, onStart }: StartProps) {
@@ -150,7 +150,7 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
-  async function start(body: { ticket_id?: number; message?: string; mode: RehearsalDetail["mode"] }) {
+  async function start(body: { ticket_id?: number; message?: string; mode: StartMode }) {
     setStarting(true);
     setError(null);
     try {
