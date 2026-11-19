@@ -1,12 +1,12 @@
 """Run a Synapse-generated MCP server against one app instance and call its tools."""
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
-from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any
 
 import anyio
 import httpx
@@ -29,45 +29,82 @@ def _parse(text: str) -> Any:
 
 
 class ToolServer:
-    """One generated MCP server process bound to one base URL (shadow or live)."""
+    """One generated MCP server process bound to one base URL (a shadow copy or live).
+
+    The MCP client's cancel scopes must be closed by the task that opened them, but a
+    rehearsal is started and finished by different web requests. So each server gets a
+    dedicated background task that owns the connection from start to stop.
+    """
 
     def __init__(self, server_file: str | Path, base_url: str, *, timeout: float = 30,
-                 python: str = sys.executable, errlog: TextIO | None = None):
+                 python: str = sys.executable, errlog_path: Path | None = None):
         self.server_file = Path(server_file)
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.python = python
-        self.errlog = errlog
-        self._stack: AsyncExitStack | None = None
+        self.errlog_path = errlog_path
         self.session: ClientSession | None = None
+        self._task: asyncio.Task | None = None
+        self._stop = asyncio.Event()
 
-    async def __aenter__(self) -> "ToolServer":
-        self._stack = AsyncExitStack()
+    async def start(self) -> "ToolServer":
+        ready = asyncio.Event()
+        self._task = asyncio.create_task(self._run(ready), name=f"mcp:{self.base_url}")
+        waiter = asyncio.create_task(ready.wait())
+        done, _ = await asyncio.wait({self._task, waiter}, timeout=self.timeout,
+                                     return_when=asyncio.FIRST_COMPLETED)
+        waiter.cancel()
+        if self._task in done:
+            self._task.result()  # re-raise the startup error
+            raise RuntimeError("MCP server stopped during startup")
+        if not done:
+            await self.stop()
+            raise TimeoutError(f"MCP server for {self.base_url} did not start in {self.timeout:.0f} seconds")
+        return self
+
+    async def _run(self, ready: asyncio.Event) -> None:
         # Only the base URL is passed on; the MCP SDK adds a minimal safe environment,
         # so model API keys in this process never reach the generated server.
         params = StdioServerParameters(command=self.python, args=[str(self.server_file)],
                                        env={"ENDPOINT_BASE_URL": self.base_url})
-        kwargs = {"errlog": self.errlog} if self.errlog else {}
+        errlog = open(self.errlog_path, "a", encoding="utf-8") if self.errlog_path else None
         try:
-            read, write = await self._stack.enter_async_context(stdio_client(params, **kwargs))
-            self.session = await self._stack.enter_async_context(ClientSession(read, write))
-            with anyio.fail_after(self.timeout):
-                await self.session.initialize()
-        except BaseException:
-            await self._stack.aclose()
-            raise
-        return self
+            async with stdio_client(params, **({"errlog": errlog} if errlog else {})) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    self.session = session
+                    ready.set()
+                    await self._stop.wait()
+        finally:
+            self.session = None
+            if errlog:
+                errlog.close()
+
+    async def stop(self) -> None:
+        self._stop.set()
+        if self._task:
+            try:
+                await asyncio.wait_for(self._task, timeout=10)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                self._task.cancel()
+            except Exception:  # noqa: BLE001 - shutdown must not fail; the error was logged by the server
+                pass
+            self._task = None
+
+    async def __aenter__(self) -> "ToolServer":
+        return await self.start()
 
     async def __aexit__(self, *exc) -> None:
-        if self._stack:
-            await self._stack.aclose()
+        await self.stop()
 
     async def list_tools(self) -> list:
-        assert self.session, "ToolServer is not started"
+        if not self.session:
+            raise RuntimeError("ToolServer is not running")
         return (await self.session.list_tools()).tools
 
     async def call(self, name: str, args: dict[str, Any]) -> CallResult:
-        assert self.session, "ToolServer is not started"
+        if not self.session:
+            return CallResult(False, "The tool server is not running")
         try:
             with anyio.fail_after(self.timeout):
                 res = await self.session.call_tool(name, args)

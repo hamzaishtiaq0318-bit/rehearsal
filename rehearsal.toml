@@ -1,0 +1,27 @@
+# Which existing app Rehearsal protects, and how to run copies of it.
+# Point these at another Synapse-built app to protect that one instead.
+
+runtime_dir = "runtime"
+
+[target]
+name = "Kestrel Desk"
+app_dir = "legacy/kestrel_desk"
+command = ["{python}", "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "{port}"]
+health_path = "/health"
+database_env = "KESTREL_DB"
+live_database = "runtime/live/kestrel.db"
+seed_command = ["{python}", "seed.py", "{database}"]
+live_port = 8100
+# Columns that legitimately differ between a rehearsal and its replay.
+volatile_columns = ["created_at"]
+# Every changed row is traced through foreign keys to its owner in this table.
+owner_table = "customers"
+
+# Tables whose new rows mean money leaving the business, and the column holding the amount in cents.
+[target.money]
+refunds = "amount_cents"
+credits = "amount_cents"
+
+[risk]
+single_payment_limit_cents = 50000
+bulk_rows = 5
