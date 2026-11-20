@@ -73,7 +73,7 @@ def summarize(entries: list[dict]) -> dict:
         elif event == "review_ready":
             reviews[rid] = (e.get("risk"), int(e.get("money_out_cents") or 0))
         elif event == "rehearsal_applied":
-            counts["applied_automatically" if e.get("by") == TRUST_POLICY else "approved"] += 1
+            counts["applied_automatically" if e.get("auto") is True else "approved"] += 1  # a field, not a name
             money_applied += cents
         elif event == "rehearsal_undone":
             counts["undone"] += 1

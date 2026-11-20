@@ -94,6 +94,7 @@
               <tr><td>Tampering with the record</td><td>The audit log is hash chained; any edit breaks the chain and the console says so.</td><td>Yes</td></tr>
               <tr><td>Targets planted in text the agent reads</td><td>Every id an action works on is traced to where the agent first saw it. Only id fields the app assigns count as the app's own data, so an order number in a message or a customer written subject is flagged.</td><td>Yes</td></tr>
               <tr><td>A reply that leaks or misleads</td><td>Replies carrying other customers' personal data are flagged, and so are replies or summaries that report money no change would pay.</td><td>Yes</td></tr>
+              <tr><td>One person approving high risk work twice</td><td>With two person approval on, each reviewer has their own secret link and the approver is whoever holds it, never a typed name. The shared console link cannot approve high risk work, and names such as Trust policy are reserved so nobody can sign as Rehearsal itself.</td><td>Yes</td></tr>
               <tr><td>Automatic approval going too far</td><td>The trust policy only applies work with no flag at all, from an agent that finished on its own, that never looked at other customers' records. New apps from <code>rehearsal init</code> start with it turned off.</td><td>Yes</td></tr>
             </tbody>
           </table>

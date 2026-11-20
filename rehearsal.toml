@@ -48,7 +48,7 @@ max_money_cents = 100000
 # "none": a person approves every change.
 [trust]
 auto_apply = "low"
-# second_approval = "high"   # high risk work needs two different people to approve it
+# second_approval = "high"   # high risk work needs two reviewers, each with their own link (REHEARSAL_REVIEWERS)
 
 # How each write tool is described to the reviewer, in plain words. Tools not listed get a generic sentence.
 [phrases]

@@ -322,14 +322,12 @@ class Rehearsal:
                 self.engine.audit.write("first_approval", rehearsal=self.id, by=by)
                 return Outcome(State.READY, f"Approved by {by}. A second person must approve before anything is "
                                             "applied.")
-        outcome = await self._approve(by if not self.approvals else " and ".join(self.approvals))
-        outcome.auto = auto
-        return outcome
+        return await self._approve(by if not self.approvals else " and ".join(self.approvals), auto)
 
     def needs_second_approval(self) -> bool:
         return bool(self.engine.config.trust.second_approval == "high" and self.review and self.review.risk == "high")
 
-    async def _approve(self, by: str) -> Outcome:
+    async def _approve(self, by: str, auto: bool) -> Outcome:
         target = self.engine.target
         async with self.engine._apply_lock:
             # Known limit: assumes Rehearsal is the only writer during the replay window (well under a second).
@@ -337,27 +335,30 @@ class Rehearsal:
             if self.state != State.READY:
                 raise InvalidState(f"Rehearsal {self.id} is {self.state}; only a ready rehearsal can be approved")
             if self.engine.server_file != self._server_file:
-                return self._decide(State.STALE, by, "The tool server was rebuilt since this rehearsal. "
-                                                     "Rehearse the task again.")
+                return self._decide(State.STALE, by, auto=auto,
+                                    message="The tool server was rebuilt since this rehearsal. Rehearse the task again.")
             live = target.live_database
             drift = meaningful(diff_databases(self.base_db, live), target.volatile_columns)
             if drift:
-                return self._decide(State.STALE, by, f"Live data changed in {len(drift)} rows since this rehearsal "
-                                                     "started. Nothing was applied. Rehearse the task again.")
+                return self._decide(State.STALE, by, auto=auto,
+                                    message=f"Live data changed in {len(drift)} rows since this rehearsal started. "
+                                            "Nothing was applied. Rehearse the task again.")
             copy_database(live, self.pre_apply_db)
             for call in self.replay_calls():
                 result = await self.engine.live_server.call(call.tool, call.args)
                 if not result.ok:
-                    return self._decide(State.FAILED, by, f"Replay of call {call.index} ({call.tool}) failed: "
-                                                          f"{result.text}. {await self._rollback()}")
+                    return self._decide(State.FAILED, by, auto=auto,
+                                        message=f"Replay of call {call.index} ({call.tool}) failed: {result.text}. "
+                                                f"{await self._rollback()}")
             applied = diff_databases(self.pre_apply_db, live)
             if not same_effect(applied, self.review.changes, target.volatile_columns):
-                return self._decide(State.FAILED, by, "Live changes did not match the rehearsal. "
-                                                      f"{await self._rollback()}")
+                return self._decide(State.FAILED, by, auto=auto,
+                                    message=f"Live changes did not match the rehearsal. {await self._rollback()}")
             copy_database(live, self.post_apply_db)
             n = len(self.replay_calls())
-            return self._decide(State.APPLIED, by, f"Applied {n} change{'s' if n != 1 else ''} to live data. "
-                                                   "Live now matches the rehearsal exactly.", verified=True)
+            return self._decide(State.APPLIED, by, auto=auto, verified=True,
+                                message=f"Applied {n} change{'s' if n != 1 else ''} to live data. "
+                                        "Live now matches the rehearsal exactly.")
 
     async def _rollback(self) -> str:
         """Put live back to the pre-approval snapshot and prove it, or say clearly that it could not be proved."""
@@ -391,8 +392,10 @@ class Rehearsal:
             restore_database(self.pre_apply_db, target.live_database)
             return self._decide(State.UNDONE, by, "Undone. Live data is back to how it was before approval.")
 
-    def _decide(self, state: State, by: str, message: str, verified: bool = False) -> Outcome:
+    def _decide(self, state: State, by: str, message: str, verified: bool = False, auto: bool = False) -> Outcome:
         self.state = state
-        self.outcome = Outcome(state, message, verified)
-        self.engine.audit.write(f"rehearsal_{state}", rehearsal=self.id, by=by, message=message, verified=verified)
+        self.outcome = Outcome(state, message, verified, auto)
+        # auto is recorded as its own field: the overview counts it, never the decider's name.
+        self.engine.audit.write(f"rehearsal_{state}", rehearsal=self.id, by=by, message=message, verified=verified,
+                                auto=auto)
         return self.outcome

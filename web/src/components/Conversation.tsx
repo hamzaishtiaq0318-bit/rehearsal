@@ -445,8 +445,8 @@ export function Conversation({ id, status, onChanged }: Props) {
                       {detail.second_approval && (
                         <p className="hint" role="status">
                           {detail.approvals && detail.approvals.length > 0
-                            ? `Approved by ${detail.approvals.join(", ")}. High risk changes need a second person: sign below with a different name to approve.`
-                            : "High risk changes need two different people to approve before anything is applied."}
+                            ? `Approved by ${detail.approvals.join(", ")}. A second reviewer must approve from their own reviewer link.`
+                            : "High risk changes need two different reviewers, each approving from their own reviewer link."}
                         </p>
                       )}
                       {needsAck && (

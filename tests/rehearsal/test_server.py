@@ -213,6 +213,15 @@ async def test_tools_reload_after_a_synapse_rebuild(api):
     assert (await api.post("/api/tools/reload", json={})).status_code == 401
 
 
+def test_reviewer_links_are_distinct_secrets_for_distinct_people():
+    links = server.reviewer_tokens(" Amira , Ben ")
+    assert set(links) == {"Amira", "Ben"} and len(set(links.values())) == 2
+    assert server.reviewer_tokens("") == {}
+    for bad in ("Amira,amira", "<script>", "A" * 41):
+        with pytest.raises(ValueError):
+            server.reviewer_tokens(bad)
+
+
 def test_trust_policy_rejects_unknown_values():
     with pytest.raises(ValueError):
         TrustConfig("sometimes")
@@ -244,18 +253,37 @@ async def test_a_proposal_can_be_sent_back_with_feedback(api):
     assert (await api.post(f"/api/rehearsals/{first}/revise", json={"feedback": "again"})).status_code == 409
 
 
-async def test_high_risk_can_require_two_different_people(api):
-    api.console.engine.config = replace(api.console.engine.config, trust=TrustConfig("low", "high"))
-    rid = (await api.post("/api/rehearsals", json={"ticket_id": 1006, "mode": "simulated"})).json()["id"]
+async def test_high_risk_needs_two_people_each_with_their_own_link(engine):
+    engine.config = replace(engine.config, trust=TrustConfig("low", "high"))
+    console = server.Console(engine, jacket_model())
+    app = server.create_app(console, token="launch", allowed_hosts=["test"], public_demo=False,
+                            reviewers={"Amira": "amira-secret", "Ben": "ben-secret"})
+    as_ = lambda t: {server.TOKEN_HEADER: t}  # noqa: E731
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            rid = (await client.post("/api/rehearsals", json={"ticket_id": 1006, "mode": "simulated"},
+                                     headers=as_("launch"))).json()["id"]
+            await follow(client, rid)
+            url = f"/api/rehearsals/{rid}/approve"
+            # The shared console link cannot approve high risk work, whatever name it types.
+            assert (await client.post(url, json={"reviewer": "Amira"}, headers=as_("launch"))).status_code == 403
+            first = (await client.post(url, json={"reviewer": "Ben"}, headers=as_("amira-secret"))).json()
+            assert first["state"] == "ready" and first["approvals"] == ["Amira"]  # the link decides, not the name
+            again = await client.post(url, json={"reviewer": "Ben"}, headers=as_("amira-secret"))
+            assert again.status_code == 409 and "someone else" in again.json()["detail"]
+            second = (await client.post(url, json={}, headers=as_("ben-secret"))).json()
+            assert second["state"] == "applied" and second["outcome"]["verified"]
+            events = [(e["event"], e.get("by")) for e in (await client.get("/api/audit")).json()["entries"]]
+            assert ("first_approval", "Amira") in events and events[-1] == ("rehearsal_applied", "Amira and Ben")
+    await console.aclose()
+
+
+@pytest.mark.parametrize("name", ["Trust policy", "trust POLICY", "system"])
+async def test_reviewers_cannot_sign_as_rehearsal_itself(api, name):
+    rid = (await api.post("/api/rehearsals", json={"ticket_id": 1002})).json()["id"]
     await follow(api, rid)
-    first = (await api.post(f"/api/rehearsals/{rid}/approve", json={"reviewer": "Amira"})).json()
-    assert first["state"] == "ready" and first["approvals"] == ["Amira"] and first["second_approval"]
-    again = await api.post(f"/api/rehearsals/{rid}/approve", json={"reviewer": "amira"})
-    assert again.status_code == 409 and "someone else" in again.json()["detail"]
-    second = (await api.post(f"/api/rehearsals/{rid}/approve", json={"reviewer": "Ben"})).json()
-    assert second["state"] == "applied" and second["outcome"]["verified"]
-    events = [(e["event"], e.get("by")) for e in (await api.get("/api/audit")).json()["entries"]]
-    assert ("first_approval", "Amira") in events and events[-1] == ("rehearsal_applied", "Amira and Ben")
+    assert (await api.post(f"/api/rehearsals/{rid}/approve", json={"reviewer": name})).status_code == 422
+    assert (await api.get("/api/overview")).json()["applied_automatically"] == 0
 
 
 async def test_overview_counts_what_rehearsal_did_from_the_audit_log(api):

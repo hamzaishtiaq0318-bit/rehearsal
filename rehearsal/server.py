@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from . import config as config_mod
 from .agent import SYSTEM_PROMPT, ReplayModel, run_agent
 from .apps import seed_database
-from .audit import summarize
+from .audit import TRUST_POLICY, summarize
 from .dbdiff import restore_database
 from .engine import Engine, InvalidState, Rehearsal, State
 from .guard import PromptGuard
@@ -107,30 +107,52 @@ class StartRequest(BaseModel):
         return self
 
 
+RESERVED_NAMES = {TRUST_POLICY.casefold(), "system", "evaluator", "gallery", "console"}
+
+
+def _plain(value: str) -> str:
+    value = " ".join(value.split())
+    if any(ord(ch) < 32 for ch in value):
+        raise ValueError("control characters are not allowed")
+    return value
+
+
+def _person(value: str) -> str:
+    """A reviewer's name, which must not pass for Rehearsal itself in the audit log."""
+    value = _plain(value)
+    if value.casefold() in RESERVED_NAMES:
+        raise ValueError(f"{value!r} is reserved for Rehearsal's own entries in the audit log")
+    return value
+
+
 class Decision(BaseModel):
     reviewer: str = Field(default="Reviewer", min_length=1, max_length=60)
     reason: str = Field(default="", max_length=500)
 
-    @field_validator("reviewer", "reason")
+    @field_validator("reviewer")
     @classmethod
-    def plain_text(cls, value: str) -> str:
-        value = " ".join(value.split())
-        if any(ord(ch) < 32 for ch in value):
-            raise ValueError("control characters are not allowed")
-        return value
+    def person(cls, value: str) -> str:
+        return _person(value)
+
+    @field_validator("reason")
+    @classmethod
+    def plain(cls, value: str) -> str:
+        return _plain(value)
 
 
 class Revision(BaseModel):
     reviewer: str = Field(default="Reviewer", min_length=1, max_length=60)
     feedback: str = Field(min_length=3, max_length=500)
 
-    @field_validator("reviewer", "feedback")
+    @field_validator("reviewer")
     @classmethod
-    def plain_text(cls, value: str) -> str:
-        value = " ".join(value.split())
-        if any(ord(ch) < 32 for ch in value):
-            raise ValueError("control characters are not allowed")
-        return value
+    def person(cls, value: str) -> str:
+        return _person(value)
+
+    @field_validator("feedback")
+    @classmethod
+    def plain(cls, value: str) -> str:
+        return _plain(value)
 
 
 def conversation(run: Run) -> dict:
@@ -318,16 +340,32 @@ class Console:
         self.engine.audit.write("demo_reset", by="console")
 
 
+REVIEWER_NAME = re.compile(r"[A-Za-z][A-Za-z .'-]{0,39}")
+
+
+def reviewer_tokens(names: str) -> dict[str, str]:
+    """A fresh secret link token for each named reviewer (REHEARSAL_REVIEWERS=Amira,Ben)."""
+    people = [n.strip() for n in names.split(",") if n.strip()]
+    bad = [n for n in people if not REVIEWER_NAME.fullmatch(n)]
+    if bad or len({n.casefold() for n in people}) != len(people):
+        raise ValueError("REHEARSAL_REVIEWERS takes distinct plain names separated by commas")
+    return {name: secrets.token_urlsafe(24) for name in people}
+
+
 def create_app(console: Console | None = None, *, token: str | None = None, allowed_hosts: list[str] | None = None,
-               public_demo: bool | None = None) -> FastAPI:
+               public_demo: bool | None = None, reviewers: dict[str, str] | None = None) -> FastAPI:
     """Build the app. Tests pass a ready Console; production builds one in the lifespan.
 
     Every write needs the launch token (like Jupyter) unless public demo mode is switched on, and only
     requests addressed to an allowed host are served, which stops DNS rebinding attacks from a web page.
+    Each named reviewer can also have their own token (name -> token). Two person approval trusts only
+    those: the approver's identity comes from the token they hold, never from a name typed in a request.
     """
     if public_demo is None:
         public_demo = os.environ.get("REHEARSAL_PUBLIC_DEMO") == "1"
     token = token or os.environ.get("REHEARSAL_TOKEN") or secrets.token_urlsafe(24)
+    if reviewers is None:
+        reviewers = reviewer_tokens(os.environ.get("REHEARSAL_REVIEWERS", ""))
     if allowed_hosts is None:
         extra = [h.strip() for h in os.environ.get("REHEARSAL_ALLOWED_HOSTS", "").split(",") if h.strip()]
         allowed_hosts = [*LOOPBACK, *extra]
@@ -360,14 +398,22 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
                   docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json")
     app.state.token = token
     app.state.public_demo = public_demo
+    app.state.reviewers = reviewers
 
     @app.middleware("http")
     async def guard_requests(request: Request, call_next):
+        request.state.reviewer = None  # set only when the request carries a named reviewer's own token
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
             # JSON only: an HTML form on another site cannot send this content type without a CORS preflight.
             if not request.headers.get("content-type", "").startswith("application/json"):
                 return JSONResponse({"detail": "Send JSON with Content-Type: application/json"}, status_code=415)
-            if not public_demo and not secrets.compare_digest(request.headers.get(TOKEN_HEADER, ""), token):
+            sent = request.headers.get(TOKEN_HEADER, "")
+            # Compare against every token, so the time taken does not reveal which one nearly matched.
+            matches = [name for name, t in reviewers.items() if secrets.compare_digest(sent, t)]
+            launch = secrets.compare_digest(sent, token)
+            if matches:
+                request.state.reviewer = matches[0]
+            elif not public_demo and not launch:
                 return JSONResponse({"detail": "Open the console with the link printed when Rehearsal started."},
                                     status_code=401)
         response = await call_next(request)
@@ -466,13 +512,18 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
         run = con(request).get_run(rehearsal_id)
         if not run.done:
             raise HTTPException(409, "The agent is still working. Wait for the review.")
+        signed_in = request.state.reviewer  # from a reviewer's own token; None for the shared launch link
+        by = signed_in or decision.reviewer
+        if action == "approve" and run.rehearsal.needs_second_approval() and not signed_in:
+            raise HTTPException(403, "High risk changes need two different people, each using their own reviewer "
+                                     "link (set REHEARSAL_REVIEWERS). The shared console link cannot approve them.")
         try:
             if action == "approve":
-                await run.rehearsal.approve(by=decision.reviewer)
+                await run.rehearsal.approve(by=by)
             elif action == "reject":
-                await run.rehearsal.reject(by=decision.reviewer, reason=decision.reason)
+                await run.rehearsal.reject(by=by, reason=decision.reason)
             else:
-                await run.rehearsal.undo(by=decision.reviewer)
+                await run.rehearsal.undo(by=by)
         except InvalidState as e:
             raise HTTPException(409, str(e)) from e
         return {**rehearsal_dict(run.rehearsal), **conversation(run), "running": False}
@@ -567,6 +618,11 @@ def main() -> None:
         print()
         print(f"  Rehearsal console: http://127.0.0.1:{port}/?token={app.state.token}")
         print("  The token in this link authorises approvals. Do not share it.")
+        for name, reviewer_token in app.state.reviewers.items():
+            print(f"  Reviewer link for {name}: http://127.0.0.1:{port}/?token={reviewer_token}  (give it to {name} only)")
+        if config_mod.load().trust.second_approval == "high" and len(app.state.reviewers) < 2:
+            print("  second_approval is on, but REHEARSAL_REVIEWERS names fewer than two people, so high risk "
+                  "changes cannot be approved.")
         print()
     uvicorn.run(app, host=host, port=port, log_level="info")
 
