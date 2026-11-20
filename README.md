@@ -4,7 +4,7 @@
 
 # Rehearsal
 
-[![tests](https://github.com/hamzaishtiaq0318-bit/rehearsal/actions/workflows/tests.yml/badge.svg)](https://github.com/hamzaishtiaq0318-bit/rehearsal/actions/workflows/tests.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-2f6f4e.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2f6f4e.svg)](LICENSE)
 
 **Every AI agent action gets a dress rehearsal.**
 
