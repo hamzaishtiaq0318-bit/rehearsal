@@ -631,6 +631,120 @@ pre,
   width: 100%;
 }
 
+/* ---------------------------------------------------------------- film */
+
+/* a dark band in both themes: the film's own black and green carried into the page */
+.film-section {
+  --text: #f4f2ea;
+  --muted: #b3b0a4;
+  background: radial-gradient(60% 55% at 50% 0%, rgb(47 160 110 / 0.16), transparent 70%), #10100f;
+  color: var(--text);
+}
+
+.film {
+  position: relative;
+  max-width: 1040px;
+  margin: 0 auto;
+  aspect-ratio: 16 / 9;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: var(--radius-lg);
+  background: #0c0c0d;
+  box-shadow: 0 30px 80px rgb(0 0 0 / 0.5);
+  overflow: hidden;
+}
+
+.film video {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* covers the poster until the film first plays; the browser's own controls take over from there */
+.film-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #f4f2ea;
+  font: inherit;
+  cursor: pointer;
+}
+
+.film-play[hidden] {
+  display: none;
+}
+
+/* sized with the poster, so it always sits in the poster's clear centre; the whole poster is the tap target */
+.film-play-icon {
+  display: grid;
+  place-items: center;
+  width: clamp(40px, 8.5%, 88px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.95);
+  color: #0c0c0d;
+  box-shadow: 0 10px 36px rgb(0 0 0 / 0.5), 0 0 0 10px rgb(255 255 255 / 0.12);
+  transition: transform 150ms ease-out;
+}
+
+.film-play-icon svg {
+  width: 40%;
+  height: 40%;
+  margin-left: 7%;
+}
+
+.film-play:hover .film-play-icon {
+  transform: scale(1.06);
+}
+
+.film-play:active .film-play-icon {
+  transform: scale(0.97);
+}
+
+.film-play:focus-visible {
+  outline: none;
+}
+
+.film-play:focus-visible .film-play-icon {
+  outline: 3px solid #7fd1a8;
+  outline-offset: 6px;
+}
+
+.film-len {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.65);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.film-note {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+@media (max-width: 600px) {
+  .film-play-icon {
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.5), 0 0 0 5px rgb(255 255 255 / 0.12);
+  }
+  .film-len {
+    right: 8px;
+    bottom: 8px;
+    padding: 2px 6px;
+    font-size: 11px;
+  }
+}
+
 /* ---------------------------------------------------------------- tour */
 
 .tour {

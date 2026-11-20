@@ -1,5 +1,7 @@
 <p align="center">
-  <img src="site/assets/img/og.png" alt="Rehearsal. Every agent action gets a dress rehearsal. The agent flags a risky ticket and asks before anything goes live." width="820">
+  <a href="https://rehearsal-ai-app.web.app/#film"><img src="site/assets/film/thumbnail.jpg" alt="Watch the 48 second Rehearsal film. Every agent action, rehearsed first. Nothing goes live until you say yes." width="820"></a>
+  <br>
+  <a href="https://rehearsal-ai-app.web.app/#film"><b>Watch the 48 second film</b></a>
 </p>
 
 # Rehearsal
@@ -18,7 +20,7 @@ Built on [Synapse](https://www.npmjs.com/package/@2ndbrainlabs-ai/synapse-cli) f
 
 **Judge it in three minutes.**
 
-1. Read [the problem](#the-problem). It takes 30 seconds.
+1. **[Watch the 48 second film](https://rehearsal-ai-app.web.app/#film)**, then read [the problem](#the-problem). It takes 30 seconds.
 2. **[Try it in your browser](https://rehearsal-ai-app.web.app/try)**, no install. Pick "Watch Rehearsal catch an attack": twelve refunds, 3,428 USD, flagged before anything reached the live store. Every run there is a real engine run, captured and replayed in the real console.
 3. Read [why Synapse is at the core](#why-synapse-is-at-the-core). The only way Rehearsal touches the app is through the server Synapse generated.
 

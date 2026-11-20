@@ -1,4 +1,4 @@
-// Rehearsal website: the theme choice and the copy buttons.
+// Rehearsal website: the theme choice, the film player and the copy buttons.
 // Loaded in <head> so a saved theme applies before the first paint. Without JavaScript the page
 // follows the system theme and the buttons stay hidden, so nothing is broken.
 (() => {
@@ -50,6 +50,32 @@
         label();
         announce(next === "dark" ? "Dark theme on" : "Light theme on");
       });
+    }
+
+    // The film: a big play button over the poster until it first plays, then the browser's own controls (play,
+    // pause, seeking, full screen). Download, speed, picture in picture and casting are removed in the HTML, and the
+    // right click menu (which offers "Save video as") is turned off here.
+    const film = document.querySelector(".film");
+    if (film) {
+      const video = film.querySelector("video");
+      const start = film.querySelector(".film-play");
+      video.addEventListener("contextmenu", (event) => event.preventDefault());
+      if (start) {
+        video.controls = false;
+        start.hidden = false;
+        start.addEventListener("click", () => {
+          video.controls = true;
+          // keyboard users land on the player, where space and the arrow keys work
+          video.focus();
+          video.play().catch(() => {
+            /* the controls are showing, so the viewer can press play again */
+          });
+        });
+        video.addEventListener("play", () => {
+          start.hidden = true;
+          video.controls = true;
+        });
+      }
     }
 
     for (const box of document.querySelectorAll(".code")) {

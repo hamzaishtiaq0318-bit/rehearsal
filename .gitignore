@@ -26,3 +26,7 @@ runtime/
 
 # Firebase deploy cache
 .firebase/
+
+# The film is served only by the website's player (no download button), so the video file stays out of the repo.
+# It is rendered in the video project and copied here before a deploy.
+site/assets/film/*.mp4
