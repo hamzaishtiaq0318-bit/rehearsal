@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Target
-from .dbdiff import RowChange
+from .dbdiff import OwnerResolver, RowChange
 from .risk import Flag, money, money_out
 
 ID_ARG = re.compile(r"(^|_)id$")
@@ -54,15 +54,16 @@ def _token(value: Any) -> re.Pattern:
 
 
 def _leaves(value: Any):
-    stack = [value]
+    """Every scalar in a parsed result, with the name of the field that holds it (None inside lists)."""
+    stack: list[tuple[str | None, Any]] = [(None, value)]
     while stack:
-        item = stack.pop()
+        key, item = stack.pop()
         if isinstance(item, dict):
-            stack.extend(item.values())
+            stack.extend(item.items())
         elif isinstance(item, list):
-            stack.extend(item)
+            stack.extend((key, v) for v in item)
         else:
-            yield item
+            yield key, item
 
 
 def _excerpt(text: str, token: re.Pattern) -> str:
@@ -89,13 +90,15 @@ def _source(arg: str, value: Any, task: str, earlier: list) -> Source:
         except ValueError:
             parsed = call.result
         structured, texts = False, []
-        for leaf in _leaves(parsed):
+        for key, leaf in _leaves(parsed):
             if isinstance(leaf, bool) or leaf is None:
                 continue
             if isinstance(leaf, str) and len(leaf) >= MIN_TEXT:
                 if token.search(leaf):
                     texts.append(leaf)
-            elif str(leaf) == str(value):
+            # Only id fields count as the app's own data: the app assigns them. A short field a customer
+            # writes, such as a ticket subject of "5023", must not pass for a record the app pointed to.
+            elif key and ID_ARG.search(key) and str(leaf) == str(value):
                 structured = True
         if structured:
             return Source(arg, value, "data", call.index, call.tool)
@@ -132,6 +135,46 @@ def provenance_flags(sources: dict[int, list[Source]], replayed: set[int]) -> li
                           f"{len(unknown)} action{'s' if len(unknown) != 1 else ''} target records that never "
                           "appeared in the request or in anything the agent read.", "source"))
     return flags
+
+
+def read_owners(calls: list, database: Path, owner_table: str | None) -> set[Any]:
+    """The owners of every record the agent looked up by id: order 5004 belongs to customer 3, and so on.
+    An id argument named order_id is looked up in the orders table (or order), customer_id in customers."""
+    if not owner_table:
+        return set()
+    owners: set[Any] = set()
+    resolver = OwnerResolver(database, owner_table)
+    try:
+        tables = {r[0] for r in resolver.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        for call in calls:
+            if call.writes or call.blocked or not call.ok:
+                continue
+            for arg, value in call.args.items():
+                name = arg.removesuffix("_id")
+                table = next((t for t in (f"{name}s", name) if t in tables and ID_ARG.search(arg)), None)
+                if table is None or isinstance(value, bool):
+                    continue
+                key = _owner_key(resolver.conn, table)
+                row = resolver.conn.execute(f'SELECT * FROM "{table}" WHERE "{key}" = ?', (value,)).fetchone()
+                if row is not None:
+                    owner = resolver.owner_of(table, dict(row))
+                    if owner is not None:
+                        owners.add(owner)
+    finally:
+        resolver.close()
+    return owners
+
+
+def scope_flags(looked_at: set[Any], changed: set[Any], target: Target) -> list[Flag]:
+    """Flag work that looked at other people's records. Low level, but it means a person reviews it."""
+    others = looked_at - changed
+    if not others or not changed:
+        return []
+    label = target.owner_table or "records"
+    noun = label if len(others) != 1 else label.removesuffix("s")
+    return [Flag("low", f"Looked at the records of {len(others)} other {noun}",
+                 f"The agent read records belonging to {', '.join(str(o) for o in sorted(others, key=str)[:8])}, "
+                 "who are not part of the changes. Worth a glance at what the reply says.", "scope")]
 
 
 def amounts(text: str) -> list[int]:

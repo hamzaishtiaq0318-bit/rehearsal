@@ -65,6 +65,19 @@ DEFAULT_CHAIN = [
 ]
 
 
+OLLAMA = "http://127.0.0.1:11434/v1"
+
+
+def offline() -> bool:
+    """OLLAMA_MODEL set: the agent runs on a local model and nothing it reads leaves this machine."""
+    return bool(os.environ.get("OLLAMA_MODEL"))
+
+
+def ollama_provider() -> Provider:
+    return Provider("Ollama", os.environ.get("OLLAMA_URL", OLLAMA).rstrip("/"), os.environ["OLLAMA_MODEL"],
+                    "OLLAMA_MODEL")
+
+
 class LLMError(RuntimeError):
     pass
 
@@ -144,6 +157,8 @@ def _transient_400(r: httpx.Response) -> bool:
 class ChatClient:
     def __init__(self, providers: list[Provider] | None = None, *, timeout: float = 90,
                  transport: httpx.AsyncBaseTransport | None = None, sleep=asyncio.sleep, clock=time.monotonic):
+        if providers is None and offline():
+            providers = [ollama_provider()]  # offline means offline: no cloud model as a fallback
         self.providers = [p for p in (providers or DEFAULT_CHAIN) if os.environ.get(p.key_env)]
         if not self.providers:
             raise LLMError("No model API key found. Set GROQ_API_KEY or GEMINI_API_KEY in .env")
@@ -180,9 +195,9 @@ class ChatClient:
             body = {"model": provider.model, "messages": _for_provider(messages, provider), "tools": tools,
                     "tool_choice": "auto", "temperature": 0.2, **provider.extra}
             for attempt in range(5):
+                headers = {} if provider.name == "Ollama" else {"Authorization": f"Bearer {os.environ[provider.key_env]}"}
                 try:
-                    r = await self._http.post(f"{provider.base_url}/chat/completions", json=body,
-                                              headers={"Authorization": f"Bearer {os.environ[provider.key_env]}"})
+                    r = await self._http.post(f"{provider.base_url}/chat/completions", json=body, headers=headers)
                 except httpx.HTTPError as e:
                     errors.append(f"{provider.label}: {type(e).__name__}")
                     if last:

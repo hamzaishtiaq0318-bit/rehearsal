@@ -8,13 +8,15 @@ import type { ComposerSubmit } from "./components/Composer";
 import { Composer } from "./components/Composer";
 import { Conversation } from "./components/Conversation";
 import { Logo } from "./components/Logo";
+import { OverviewView } from "./components/OverviewView";
 import { Sidebar } from "./components/Sidebar";
 import { greeting } from "./components/words";
 
-type Route = { view: "new" } | { view: "chat"; id: string } | { view: "audit" };
+type Route = { view: "new" } | { view: "chat"; id: string } | { view: "audit" } | { view: "overview" };
 
 function parseRoute(hash: string): Route {
   if (hash.startsWith("#/audit")) return { view: "audit" };
+  if (hash.startsWith("#/overview")) return { view: "overview" };
   const match = /^#\/c\/([a-f0-9]{6,32})$/.exec(hash);
   return match ? { view: "chat", id: match[1]! } : { view: "new" };
 }
@@ -159,7 +161,8 @@ export function App() {
 
   useEffect(() => {
     const current = route.view === "chat" ? conversations.find((c) => c.id === route.id) : null;
-    document.title = `${route.view === "audit" ? "Audit log" : current?.title ?? "New conversation"} | Rehearsal`;
+    document.title = `${route.view === "audit" ? "Audit log" : route.view === "overview" ? "Overview"
+      : current?.title ?? "New conversation"} | Rehearsal`;
   }, [route, conversations]);
 
   // Any page change (a link, Back, Forward or a typed address) closes the phone menu.
@@ -217,7 +220,7 @@ export function App() {
     <div className="app" data-menu-open={menuOpen}>
       <a className="skip-link" href="#content">Skip to content</a>
       <Sidebar status={status} conversations={conversations} selected={route.view === "chat" ? route.id : null}
-        view={route.view === "audit" ? "audit" : "chat"} theme={theme} open={menuOpen}
+        view={route.view === "audit" || route.view === "overview" ? route.view : "chat"} theme={theme} open={menuOpen}
         onClose={() => setMenuOpen(false)} onToggleTheme={toggleTheme}
         onPause={hasToken() && !status?.static_demo ? pauseAll : undefined} />
       <button type="button" className="scrim" aria-hidden="true" tabIndex={-1} onClick={() => setMenuOpen(false)} />
@@ -254,7 +257,11 @@ export function App() {
         )}
 
         <main id="content" className="content" tabIndex={-1}>
-          {route.view === "audit" ? (
+          {route.view === "overview" ? (
+            <div className="page">
+              <OverviewView />
+            </div>
+          ) : route.view === "audit" ? (
             <div className="page">
               <AuditView publicDemo={Boolean(status?.public_demo)} onReset={() => { refresh(); navigate("#/"); }} />
             </div>

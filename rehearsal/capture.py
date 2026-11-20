@@ -93,11 +93,12 @@ async def capture() -> dict:
                     print(f"ticket {ticket_id} {mode}: {len(ready['actions'])} actions, "
                           f"risk {(ready['review'] or {}).get('risk')}, {ready['state']}", flush=True)
                 audit = (await client.get("/api/audit")).json()
+                tamper = (await client.get("/api/audit/tamper-check")).json()
     finally:
         await console.aclose()
         await engine.close()
     return {"captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "status": status,
-            "tickets": tickets, "ticket_details": details, "audit": audit, "scenarios": scenarios}
+            "tickets": tickets, "ticket_details": details, "audit": audit, "tamper": tamper, "scenarios": scenarios}
 
 
 def main() -> None:

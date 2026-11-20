@@ -17,14 +17,14 @@ from typing import Any
 
 from . import catalog as catalog_mod
 from .apps import AppProcess, seed_database
-from .audit import AuditLog
+from .audit import TRUST_POLICY, AuditLog
 from .config import Config
 from .dbdiff import (OwnerResolver, RowChange, copy_database, diff_databases, display_names, meaningful,
                      restore_database, same_effect)
-from .explain import Source, leak_flags, provenance, provenance_flags, say_do_flags
+from .explain import Source, leak_flags, provenance, provenance_flags, read_owners, say_do_flags, scope_flags
 from .guard import THRESHOLD as GUARD_THRESHOLD
 from .guard import PromptGuard
-from .risk import LEVELS, Flag, assess, money_out, verdict
+from .risk import LEVELS, Flag, assess, money_out, rule_flags, verdict
 from .toolserver import CallResult, ToolServer, fetch_openapi
 
 
@@ -83,9 +83,6 @@ class Outcome:
     message: str
     verified: bool = False
     auto: bool = False  # decided by the trust policy rather than a person
-
-
-TRUST_POLICY = "Trust policy"
 
 
 class Engine:
@@ -183,6 +180,7 @@ class Rehearsal:
         self.causes: dict[tuple, list[int]] = {}  # changed row -> the write calls that changed it
         self.sources: dict[int, list[Source]] = {}  # write call -> where each id it acts on came from
         self.owner_names: dict[Any, str] = {}  # owner id -> a readable name, for the reviewer
+        self.approvals: list[str] = []  # who has approved so far, when high risk needs two people
         self._rows: dict[tuple, Any] = {}
 
     # ------------------------------------------------------------ rehearsing
@@ -286,7 +284,9 @@ class Rehearsal:
         flags = assess(changes, owners, failed, blocked, target, cfg, injections) \
             + provenance_flags(self.sources, {c.index for c in self.replay_calls()}) \
             + say_do_flags(summary, changes, target) \
-            + leak_flags(changes, owners, target, self.shadow_db)
+            + leak_flags(changes, owners, target, self.shadow_db) \
+            + scope_flags(read_owners(self.calls, self.base_db, target.owner_table), set(distinct), target) \
+            + rule_flags(changes, owners, target, self.engine.config.rules)
         flags.sort(key=lambda f: -LEVELS[f.level])
         self.review = Review(changes, owners, flags, verdict(flags),
                              sum(cents for _, cents in money_out(changes, target)))
@@ -301,18 +301,33 @@ class Rehearsal:
     def replay_calls(self) -> list[RecordedCall]:
         return [c for c in self.calls if c.writes and c.ok]
 
-    async def apply_if_trusted(self) -> Outcome | None:
-        """Apply a rehearsal that raised no flag at all, when the trust policy allows it.
-        It goes through the same checked replay as a person's approval."""
-        if (self.engine.config.trust.auto_apply == "low" and self.state == State.READY and self.review
-                and self.review.risk == "low" and not self.review.flags and self.replay_calls()):
+    async def apply_if_trusted(self, *, finished: bool = True) -> Outcome | None:
+        """Apply a rehearsal that raised no flag at all, when the trust policy allows it. It goes through
+        the same checked replay as a person's approval. Work from an agent that crashed or ran out of steps
+        (finished=False) always waits for a person, however harmless it looks."""
+        if (finished and self.engine.config.trust.auto_apply == "low" and self.state == State.READY
+                and self.review and self.review.risk == "low" and not self.review.flags and self.replay_calls()):
             return await self.approve(by=TRUST_POLICY, auto=True)
         return None
 
     async def approve(self, *, by: str, auto: bool = False) -> Outcome:
-        outcome = await self._approve(by)
+        if not auto and self.needs_second_approval():
+            if self.state != State.READY:
+                raise InvalidState(f"Rehearsal {self.id} is {self.state}; only a ready rehearsal can be approved")
+            if by.casefold() in (a.casefold() for a in self.approvals):
+                raise InvalidState("High risk changes need a second person. The second approval must come from "
+                                   "someone else.")
+            self.approvals.append(by)
+            if len(self.approvals) < 2:
+                self.engine.audit.write("first_approval", rehearsal=self.id, by=by)
+                return Outcome(State.READY, f"Approved by {by}. A second person must approve before anything is "
+                                            "applied.")
+        outcome = await self._approve(by if not self.approvals else " and ".join(self.approvals))
         outcome.auto = auto
         return outcome
+
+    def needs_second_approval(self) -> bool:
+        return bool(self.engine.config.trust.second_approval == "high" and self.review and self.review.risk == "high")
 
     async def _approve(self, by: str) -> Outcome:
         target = self.engine.target

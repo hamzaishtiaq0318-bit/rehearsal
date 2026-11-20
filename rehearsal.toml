@@ -35,11 +35,20 @@ customers = ["email", "name"]
 single_payment_limit_cents = 50000
 bulk_rows = 5
 
+# Your own business rules. Breaking any of them is high risk, so a person always decides.
+#   never_change     "table" or "table.column" no task may change
+#   protected        owner ids no task may touch, for example VIP customers
+#   max_money_cents  the most one task may pay out in total
+[rules]
+never_change = ["customers.email", "orders.total_cents"]
+max_money_cents = 100000
+
 # "low": a rehearsal that raises no flag at all (no money, one customer, nothing unusual) is applied
 # without asking. It is still verified against the rehearsal, logged and undoable.
 # "none": a person approves every change.
 [trust]
 auto_apply = "low"
+# second_approval = "high"   # high risk work needs two different people to approve it
 
 # How each write tool is described to the reviewer, in plain words. Tools not listed get a generic sentence.
 [phrases]

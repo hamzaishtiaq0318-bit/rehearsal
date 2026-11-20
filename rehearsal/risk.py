@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from decimal import Decimal
 from typing import Any
 
-from .config import RiskConfig, Target
+from .config import RiskConfig, RulesConfig, Target
 from .dbdiff import RowChange
 
 LEVELS = {"high": 3, "medium": 2, "low": 1}
@@ -79,6 +79,35 @@ def assess(changes: list[RowChange], owners: list[Any], failed_calls: int, block
                           "Failed calls changed nothing and will not be replayed."))
 
     return sorted(flags, key=lambda f: -LEVELS[f.level])
+
+
+def rule_flags(changes: list[RowChange], owners: list[Any], target: Target, rules: RulesConfig) -> list[Flag]:
+    """The business rules written in rehearsal.toml. Breaking any of them is high risk."""
+    flags: list[Flag] = []
+    hits = []
+    for c in changes:
+        columns = c.changed_columns if c.kind == "changed" else list((c.after or c.before or {}).keys())
+        for rule in rules.never_change:
+            table, _, column = rule.partition(".")
+            if c.table == table and (not column or column in columns):
+                hits.append(f"{rule} ({c.kind})")
+    if hits:
+        shown = sorted(set(hits))
+        flags.append(Flag("high", "Breaks a rule: changes something that must never change",
+                          f"{', '.join(shown[:5])}{' and more' if len(shown) > 5 else ''}.", "rule"))
+    protected = {str(p) for p in rules.protected}
+    touched = sorted({str(o) for o in owners if o is not None and str(o) in protected})
+    if touched:
+        label = target.owner_table or "records"
+        flags.append(Flag("high", f"Breaks a rule: touches protected {label}",
+                          f"Protected in rehearsal.toml: {', '.join(touched)}.", "rule"))
+    if rules.max_money_cents is not None:
+        total = sum(cents for _, cents in money_out(changes, target))
+        if total > rules.max_money_cents:
+            flags.append(Flag("high", "Breaks a rule: pays out more than one task may",
+                              f"{money(total)} USD against a limit of {money(rules.max_money_cents)} USD per task.",
+                              "rule"))
+    return flags
 
 
 def verdict(flags: list[Flag]) -> str:

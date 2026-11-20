@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from . import config as config_mod
 from .agent import SYSTEM_PROMPT, ReplayModel, run_agent
 from .apps import seed_database
+from .audit import summarize
 from .dbdiff import restore_database
 from .engine import Engine, InvalidState, Rehearsal, State
 from .guard import PromptGuard
@@ -111,6 +112,19 @@ class Decision(BaseModel):
     reason: str = Field(default="", max_length=500)
 
     @field_validator("reviewer", "reason")
+    @classmethod
+    def plain_text(cls, value: str) -> str:
+        value = " ".join(value.split())
+        if any(ord(ch) < 32 for ch in value):
+            raise ValueError("control characters are not allowed")
+        return value
+
+
+class Revision(BaseModel):
+    reviewer: str = Field(default="Reviewer", min_length=1, max_length=60)
+    feedback: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reviewer", "feedback")
     @classmethod
     def plain_text(cls, value: str) -> str:
         value = " ".join(value.split())
@@ -216,7 +230,7 @@ class Console:
                                         "models": agent.models, "steps": agent.steps, "error": agent.error})
             if run.rehearsal.state == State.REHEARSING:
                 await run.rehearsal.finish(summary=agent.summary)
-                await run.rehearsal.apply_if_trusted()
+                await run.rehearsal.apply_if_trusted(finished=agent.finished and not agent.error)
             run.emit("review", rehearsal_dict(run.rehearsal))
             await self.notify(run)
         except Exception as e:  # noqa: BLE001 - surface any failure to the viewer instead of hanging the stream
@@ -226,6 +240,27 @@ class Console:
         finally:
             run.done = True
             run.emit("done", {"state": str(run.rehearsal.state)})
+
+    async def revise(self, run: Run, revision: Revision) -> Run:
+        """Send a proposal back: cancel it, then let the agent redo the task on a fresh copy with the feedback."""
+        if self.public_demo:
+            raise HTTPException(403, "The public demo does not take written instructions")
+        if run.mode != "agent":
+            raise HTTPException(409, "Only a live agent can redo the work. Recorded runs and simulations are fixed.")
+        if not run.done or run.rehearsal.state != State.READY:
+            raise HTTPException(409, "Only a proposal that is waiting for a decision can be sent back")
+        if self.active() >= MAX_ACTIVE:
+            raise HTTPException(429, f"{MAX_ACTIVE} rehearsals are already running. Try again in a moment.")
+        await run.rehearsal.reject(by=revision.reviewer, reason=f"Sent back for changes: {revision.feedback}")
+        # The feedback is the person's own words, so ids in it count as part of the request.
+        task = (f"{run.rehearsal.task}\nA person reviewed your earlier attempt and did not apply it. "
+                f"They ask for this change: {revision.feedback}")
+        rehearsal = await self.engine.rehearse(task, actor="Live model")
+        again = Run(rehearsal, "agent", "Live model", run.title, f"Change requested: {revision.feedback}", run.ticket_id)
+        self.runs[rehearsal.id] = again
+        again.emit("started", {"task": task, "request": again.request, "mode": "agent", "model": again.model})
+        again.task = asyncio.create_task(self._drive(again, self.client, task))
+        return again
 
     async def pause_all(self, by: str) -> int:
         """Stop every rehearsal that is still running. Their private copies are discarded, so nothing
@@ -450,6 +485,12 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
     async def reject(rehearsal_id: str, decision: Decision, request: Request) -> dict:
         return await decide(rehearsal_id, request, "reject", decision)
 
+    @app.post("/api/rehearsals/{rehearsal_id}/revise", status_code=201)
+    async def revise(rehearsal_id: str, revision: Revision, request: Request) -> dict:
+        c = con(request)
+        again = await c.revise(c.get_run(rehearsal_id), revision)
+        return {"id": again.rehearsal.id, "mode": again.mode, "model": again.model, "title": again.title}
+
     @app.post("/api/rehearsals/{rehearsal_id}/undo")
     async def undo(rehearsal_id: str, decision: Decision, request: Request) -> dict:
         return await decide(rehearsal_id, request, "undo", decision)
@@ -459,6 +500,16 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
         log = con(request).engine.audit
         entries = log.entries()
         return {"verified": log.verify(), "count": len(entries), "entries": entries[-max(1, min(limit, 1000)):]}
+
+    @app.get("/api/overview")
+    async def overview(request: Request) -> dict:
+        """The protection dashboard, computed from the audit log."""
+        return summarize(con(request).engine.audit.entries())
+
+    @app.get("/api/audit/tamper-check")
+    async def tamper_check(request: Request) -> dict:
+        """Edit one entry on a copy of the log and show where the hash chain breaks. Nothing is written."""
+        return con(request).engine.audit.tamper_check()
 
     @app.post("/api/reset")
     async def reset(request: Request) -> dict:

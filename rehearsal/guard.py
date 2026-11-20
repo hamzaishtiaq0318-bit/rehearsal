@@ -41,7 +41,8 @@ def strings_in(value: Any) -> list[str]:
 
 class PromptGuard:
     def __init__(self, transport: httpx.AsyncBaseTransport | None = None):
-        self.key = os.environ.get("GROQ_API_KEY")
+        # Offline mode (OLLAMA_MODEL) promises nothing leaves the machine, and this scan calls Groq.
+        self.key = None if os.environ.get("OLLAMA_MODEL") else os.environ.get("GROQ_API_KEY")
         self._http = httpx.AsyncClient(timeout=15, transport=transport)
 
     @property

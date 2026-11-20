@@ -92,6 +92,9 @@
               <tr><td>Approvals forged from another website</td><td>Writes need a per launch token and a JSON body, and requests for other host names are refused, which stops DNS rebinding.</td><td>Yes</td></tr>
               <tr><td>An agent approving its own work</td><td>The approval token never reaches the agent. In MCP proxy mode the link that can approve opens in the person's browser, and the agent only learns the decision.</td><td>Yes</td></tr>
               <tr><td>Tampering with the record</td><td>The audit log is hash chained; any edit breaks the chain and the console says so.</td><td>Yes</td></tr>
+              <tr><td>Targets planted in text the agent reads</td><td>Every id an action works on is traced to where the agent first saw it. Only id fields the app assigns count as the app's own data, so an order number in a message or a customer written subject is flagged.</td><td>Yes</td></tr>
+              <tr><td>A reply that leaks or misleads</td><td>Replies carrying other customers' personal data are flagged, and so are replies or summaries that report money no change would pay.</td><td>Yes</td></tr>
+              <tr><td>Automatic approval going too far</td><td>The trust policy only applies work with no flag at all, from an agent that finished on its own, that never looked at other customers' records. New apps from <code>rehearsal init</code> start with it turned off.</td><td>Yes</td></tr>
             </tbody>
           </table>
         </div>
@@ -107,6 +110,7 @@
           <li><strong>SQLite today.</strong> Shadow copies and diffs use SQLite. Other databases need a different snapshot method.</li>
           <li><strong>Reviewer names are self reported.</strong> The launch token proves a request came from the console, not who sat at it. A real deployment would sit behind single sign on.</li>
           <li><strong>Rules, not mind reading.</strong> Risk rules catch effects that look unusual. A harmful change that looks exactly like normal work still needs a careful reviewer, which is why every change is shown in full.</li>
+          <li><strong>A reply applied by the trust policy cannot be unsent in a real system.</strong> In the demo store a reply is a row; in production it might be an email. The policy only lets through work with no flag at all, but a reply could still promise something without naming an amount. Set <code>auto_apply = "none"</code> if every reply must be read by a person.</li>
           <li><strong>Prompt Guard is advisory.</strong> It caught blatant injections in testing and missed the polite one in our demo, scoring it 0.14. That is exactly why it never decides anything on its own.</li>
         </ul>
 

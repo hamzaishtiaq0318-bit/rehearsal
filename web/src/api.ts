@@ -138,6 +138,9 @@ export interface RehearsalDetail {
   calls: Call[];
   replay: number[];
   review: Review | null;
+  /** Who has approved so far, and whether this one needs two different people (high risk, when configured). */
+  approvals?: string[];
+  second_approval?: boolean;
   /** auto: decided by the trust policy (no flags at all) rather than a person. */
   outcome: { state: string; message: string; verified: boolean; auto?: boolean } | null;
   mode: StartMode | "external";
@@ -151,6 +154,31 @@ export interface AuditEntry {
   rehearsal?: string;
   by?: string;
   [key: string]: unknown;
+}
+
+/** What Rehearsal has done, counted from the audit log. */
+export interface Overview {
+  rehearsed: number;
+  applied_automatically: number;
+  approved: number;
+  cancelled: number;
+  undone: number;
+  held_or_rolled_back: number;
+  high_risk_stopped: number;
+  money_stopped_cents: number;
+  money_applied_cents: number;
+  chain_intact: boolean;
+}
+
+/** The audit log's tamper demonstration: one entry edited on a copy, and where the chain check fails. */
+export interface TamperCheck {
+  edited: number | null;
+  event?: string;
+  field?: string;
+  was?: string;
+  broken_at?: number | null;
+  count?: number;
+  real_log_intact?: boolean;
 }
 
 export class ApiError extends Error {
@@ -253,7 +281,11 @@ const live = {
     request<{ id: string; title: string }>("/api/rehearsals", body),
   decide: (id: string, decision: Decision, reviewer: string, reason = "") =>
     request<RehearsalDetail>(`/api/rehearsals/${encodeURIComponent(id)}/${decision}`, { reviewer, reason }),
+  revise: (id: string, reviewer: string, feedback: string) =>
+    request<{ id: string; title: string }>(`/api/rehearsals/${encodeURIComponent(id)}/revise`, { reviewer, feedback }),
   audit: () => request<{ verified: boolean; count: number; entries: AuditEntry[] }>("/api/audit"),
+  tamperCheck: () => request<TamperCheck>("/api/audit/tamper-check"),
+  overview: () => request<Overview>("/api/overview"),
   reset: () => request<{ ok: boolean }>("/api/reset", {}),
   reloadTools: () =>
     request<{ server_file: string; tools: string[]; added: string[]; removed: string[] }>("/api/tools/reload", {}),
@@ -268,7 +300,7 @@ export const STATIC_DEMO = import.meta.env.MODE === "static";
 
 function staticApi(): Api {
   const demo = import("./demo").then((m) => m.createDemoApi());
-  const call = <K extends Exclude<keyof Api, "subscribe" | "reloadTools" | "pause">>(name: K) =>
+  const call = <K extends Exclude<keyof Api, "subscribe" | "reloadTools" | "pause" | "revise">>(name: K) =>
     (async (...args: unknown[]) => ((await demo)[name] as (...a: unknown[]) => unknown)(...args)) as Api[K];
   return {
     status: call("status"),
@@ -279,11 +311,16 @@ function staticApi(): Api {
     start: call("start"),
     decide: call("decide"),
     audit: call("audit"),
+    tamperCheck: call("tamperCheck"),
+    overview: call("overview"),
     reset: call("reset"),
     reloadTools: async () => {
       throw new ApiError(403, "The browser demo has no tool server to reload");
     },
     pause: async () => ({ stopped: 0 }),
+    revise: async () => {
+      throw new ApiError(403, "Sending work back needs the live agent. Run Rehearsal yourself to try it.");
+    },
     subscribe: (id, on) => {
       let stop = () => undefined as void;
       let stopped = false;

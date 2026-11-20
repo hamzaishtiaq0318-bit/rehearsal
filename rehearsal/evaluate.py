@@ -12,6 +12,7 @@ import json
 import sqlite3
 import tempfile
 import time
+from collections import Counter
 from contextlib import closing
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -107,8 +108,13 @@ async def evaluate(runs: int, tickets: list[int], providers: list[Provider], out
                 problems = grade(ticket_id, review, r.base_db) if not agent.error else [f"agent error: {agent.error}"]
                 await r.reject(by="evaluator", reason="Evaluation run")
                 guard_scores = [c.injection_score for c in r.calls if c.injection_score is not None]
+                # Shadow mode: what would have happened had this been live, without anyone deciding anything.
+                outcome = "nothing to apply" if not r.replay_calls() else "applied without asking" \
+                    if not review.flags and not agent.error else "dangerous" if review.risk == "high" \
+                    else "a person reviews"
                 row = {"run": run, "ticket": ticket_id, "story": STORIES[ticket_id], "passed": not problems,
-                       "problems": problems, "risk": review.risk, "flags": [f.title for f in review.flags],
+                       "problems": problems, "risk": review.risk, "shadow": outcome,
+                       "flags": [f.title for f in review.flags],
                        "money_out_cents": review.money_out_cents,
                        "prompt_guard_max": round(max(guard_scores), 4) if guard_scores else None,
                        "steps": agent.steps, "models": agent.models, "tokens": agent.tokens,
@@ -135,7 +141,9 @@ async def evaluate(runs: int, tickets: list[int], providers: list[Provider], out
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"eval-{datetime.now():%Y%m%d-%H%M%S}.json"
     path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    shadow = Counter(r["shadow"] for r in results)
     print(f"\n{passed}/{len(results)} passed. Report: {path}")
+    print("Shadow mode, had this been live: " + ", ".join(f"{n} {what}" for what, n in shadow.most_common()) + ".")
     return report
 
 
@@ -147,6 +155,8 @@ def main() -> None:
     parser.add_argument("--prompt", default="standard", choices=sorted(PROMPTS))
     parser.add_argument("--record", action="store_true",
                         help="save the first passing run of each ticket to demo/recordings for replay")
+    parser.add_argument("--check", action="store_true",
+                        help="exit with an error if any ticket was handled wrongly, so CI fails on a worse agent")
     args = parser.parse_args()
     if args.providers == "chain":
         providers = DEFAULT_CHAIN
@@ -157,7 +167,11 @@ def main() -> None:
     if unknown:
         parser.error(f"unknown tickets {unknown}; choose from {list(STORIES)}")
     record_dir = config.ROOT / "demo" / "recordings" if args.record else None
-    asyncio.run(evaluate(args.runs, tickets, providers, config.load().runtime_dir / "eval", args.prompt, record_dir))
+    report = asyncio.run(evaluate(args.runs, tickets, providers, config.load().runtime_dir / "eval", args.prompt,
+                                  record_dir))
+    if args.check and report["passed"] < report["total"]:
+        raise SystemExit(f"Agent check failed: {report['total'] - report['passed']} of {report['total']} tickets "
+                         "were handled wrongly.")
 
 
 if __name__ == "__main__":

@@ -45,14 +45,33 @@ class RiskConfig:
 
 
 @dataclass(frozen=True)
+class RulesConfig:
+    """Business rules written in rehearsal.toml. Breaking any of them raises a high flag."""
+    never_change: tuple[str, ...] = ()  # "table" or "table.column" that no task may change
+    protected: tuple = ()  # owner ids no task may touch, such as VIP customers
+    max_money_cents: int | None = None  # the most one task may pay out in total
+
+    def __post_init__(self) -> None:
+        for item in self.never_change:
+            if not isinstance(item, str) or not item or item.count(".") > 1:
+                raise ValueError(f'[rules] never_change takes "table" or "table.column", not {item!r}')
+        if self.max_money_cents is not None and (not isinstance(self.max_money_cents, int) or self.max_money_cents < 0):
+            raise ValueError("[rules] max_money_cents must be a whole number of cents, 0 or more")
+
+
+@dataclass(frozen=True)
 class TrustConfig:
     # "low": a rehearsal with no flags at all is applied without asking, still verified and undoable.
     # "none": a person approves every change.
     auto_apply: str = "none"
+    # "high": high risk work needs two different people to approve it before anything is applied.
+    second_approval: str = "none"
 
     def __post_init__(self) -> None:
         if self.auto_apply not in ("none", "low"):
             raise ValueError(f'[trust] auto_apply must be "none" or "low", not {self.auto_apply!r}')
+        if self.second_approval not in ("none", "high"):
+            raise ValueError(f'[trust] second_approval must be "none" or "high", not {self.second_approval!r}')
 
 
 @dataclass(frozen=True)
@@ -63,6 +82,7 @@ class Config:
     phrases: dict[str, str] = field(default_factory=dict)  # tool name -> plain sentence template
     trust: TrustConfig = field(default_factory=TrustConfig)
     agent_prompt: str | None = None  # the built in agent's instructions for this app; None uses the demo store's
+    rules: RulesConfig = field(default_factory=RulesConfig)
 
 
 def load_env(path: Path = ROOT / ".env") -> None:
@@ -98,4 +118,12 @@ def load(path: Path | None = None) -> Config:
     )
     return Config(target, RiskConfig(**raw.get("risk", {})), (base / raw.get("runtime_dir", "runtime")).resolve(),
                   dict(raw.get("phrases", {})), TrustConfig(**raw.get("trust", {})),
-                  raw.get("agent", {}).get("prompt"))
+                  raw.get("agent", {}).get("prompt"), _rules(raw.get("rules", {})))
+
+
+def _rules(raw: dict) -> RulesConfig:
+    unknown = set(raw) - {"never_change", "protected", "max_money_cents"}
+    if unknown:  # a misspelt rule must not quietly stop protecting anything
+        raise ValueError(f"[rules] does not know {', '.join(sorted(unknown))}")
+    return RulesConfig(never_change=tuple(raw.get("never_change", ())), protected=tuple(raw.get("protected", ())),
+                       max_money_cents=raw.get("max_money_cents"))

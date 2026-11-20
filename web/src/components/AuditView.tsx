@@ -1,7 +1,7 @@
 import { CircleAlert, Link2, RefreshCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { AuditEntry } from "../api";
+import type { AuditEntry, TamperCheck } from "../api";
 import { api, errorMessage, hasToken } from "../api";
 import { when } from "./labels";
 
@@ -38,7 +38,16 @@ export function AuditView({ publicDemo, onReset }: { publicDemo: boolean; onRese
   const [data, setData] = useState<{ verified: boolean; entries: AuditEntry[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloaded, setReloaded] = useState<string | null>(null);
+  const [tamper, setTamper] = useState<TamperCheck | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
+
+  async function checkTamper() {
+    try {
+      setTamper(await api.tamperCheck());
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
 
   async function reloadTools() {
     setReloaded(null);
@@ -93,8 +102,17 @@ export function AuditView({ publicDemo, onReset }: { publicDemo: boolean; onRese
           )}
         </div>
         <p className="hint spaced-bottom">
-          Each entry stores the hash of the one before it, so editing or deleting any past entry breaks the chain.
+          Each entry stores the hash of the one before it, so editing or deleting any past entry breaks the chain.{" "}
+          <button type="button" className="text-button" onClick={checkTamper}>See it catch an edit</button>
         </p>
+        {tamper && tamper.edited !== null && tamper.edited !== undefined && (
+          <p className="tamper-result" role="status">
+            On a copy of the log, we changed who made entry {tamper.edited + 1} ({EVENT_LABEL[tamper.event ?? ""] ??
+              tamper.event}) from “{tamper.was}” to “someone else”. The check fails at entry{" "}
+            {(tamper.broken_at ?? 0) + 1}, because its hash no longer matches.{" "}
+            {tamper.real_log_intact ? "The real log was never touched and is still intact." : ""}
+          </p>
+        )}
         {error && (
           <p className="error" role="alert">
             {error}

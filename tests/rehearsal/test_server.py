@@ -8,7 +8,7 @@ import pytest
 
 from rehearsal import server
 from rehearsal.config import TrustConfig
-from rehearsal.llm import Reply, ToolCall
+from rehearsal.llm import LLMError, Reply, ToolCall
 
 pytestmark = pytest.mark.anyio
 
@@ -116,6 +116,36 @@ async def test_work_with_no_flags_is_applied_by_the_trust_policy(api):
     assert (await api.get("/api/tickets/1003")).json()["status"] == "open"
 
 
+async def test_looking_at_other_customers_means_a_person_reviews(api):
+    api.console.client = ScriptedModel(
+        reply(("get_ticket", {"ticket_id": 1003})),
+        reply(("get_customer", {"customer_id": 9})),  # not Priya
+        reply(("reply_to_ticket", {"ticket_id": 1003, "body": "Your order has shipped."}),
+              ("update_ticket", {"ticket_id": 1003, "status": "closed"})),
+        reply(text="Told Priya her order shipped."))
+    rid = (await api.post("/api/rehearsals", json={"ticket_id": 1003})).json()["id"]
+    await follow(api, rid)
+    detail = (await api.get(f"/api/rehearsals/{rid}")).json()
+    assert detail["state"] == "ready"
+    assert [f["title"] for f in detail["review"]["flags"]] == ["Looked at the records of 1 other customer"]
+
+
+class FailsAfter(ScriptedModel):
+    async def complete(self, messages, tools):
+        if not self.replies:
+            raise LLMError("every free model is busy")
+        return self.replies.pop(0)
+
+
+async def test_work_from_an_agent_that_did_not_finish_waits_for_a_person(api):
+    api.console.client = FailsAfter(reply(("get_ticket", {"ticket_id": 1003})),
+                                    reply(("update_ticket", {"ticket_id": 1003, "status": "pending"})))
+    rid = (await api.post("/api/rehearsals", json={"ticket_id": 1003})).json()["id"]
+    await follow(api, rid)
+    detail = (await api.get(f"/api/rehearsals/{rid}")).json()
+    assert detail["review"]["flags"] == [] and detail["state"] == "ready"  # harmless, but it never finished
+
+
 async def test_money_always_waits_for_a_person(api):
     rid = (await api.post("/api/rehearsals", json={"ticket_id": 1002})).json()["id"]  # the 249.00 refund
     await follow(api, rid)
@@ -186,6 +216,62 @@ async def test_tools_reload_after_a_synapse_rebuild(api):
 def test_trust_policy_rejects_unknown_values():
     with pytest.raises(ValueError):
         TrustConfig("sometimes")
+
+
+async def test_a_proposal_can_be_sent_back_with_feedback(api):
+    api.console.client = ScriptedModel(
+        # First attempt: the jacket refund plus a goodwill credit nobody asked for.
+        reply(("refund_order", {"order_id": 5003, "amount": 249, "reason": "Torn sleeve"}),
+              ("add_store_credit", {"customer_id": 2, "amount": 20, "reason": "Goodwill"})),
+        reply(text="Refunded 249.00 USD and added 20.00 USD credit."),
+        # Second attempt, after the feedback.
+        reply(("refund_order", {"order_id": 5003, "amount": 249, "reason": "Torn sleeve"})),
+        reply(text="Refunded 249.00 USD for the jacket only."))
+    first = (await api.post("/api/rehearsals", json={"ticket_id": 1002})).json()["id"]
+    await follow(api, first)
+    sent = await api.post(f"/api/rehearsals/{first}/revise",
+                          json={"reviewer": "Amira", "feedback": "Only refund the jacket, no store credit."})
+    assert sent.status_code == 201
+    second = sent.json()["id"]
+    await follow(api, second)
+    old = (await api.get(f"/api/rehearsals/{first}")).json()
+    new = (await api.get(f"/api/rehearsals/{second}")).json()
+    assert old["state"] == "rejected" and "Only refund the jacket" in old["outcome"]["message"]
+    assert new["state"] == "ready" and new["actions"] == ["Refund 249.00 USD on order 5003"]
+    assert new["request"] == "Change requested: Only refund the jacket, no store credit."
+    assert "Only refund the jacket" in new["task"]
+    # Recorded runs cannot be redone, and a decided proposal cannot be sent back again.
+    assert (await api.post(f"/api/rehearsals/{first}/revise", json={"feedback": "again"})).status_code == 409
+
+
+async def test_high_risk_can_require_two_different_people(api):
+    api.console.engine.config = replace(api.console.engine.config, trust=TrustConfig("low", "high"))
+    rid = (await api.post("/api/rehearsals", json={"ticket_id": 1006, "mode": "simulated"})).json()["id"]
+    await follow(api, rid)
+    first = (await api.post(f"/api/rehearsals/{rid}/approve", json={"reviewer": "Amira"})).json()
+    assert first["state"] == "ready" and first["approvals"] == ["Amira"] and first["second_approval"]
+    again = await api.post(f"/api/rehearsals/{rid}/approve", json={"reviewer": "amira"})
+    assert again.status_code == 409 and "someone else" in again.json()["detail"]
+    second = (await api.post(f"/api/rehearsals/{rid}/approve", json={"reviewer": "Ben"})).json()
+    assert second["state"] == "applied" and second["outcome"]["verified"]
+    events = [(e["event"], e.get("by")) for e in (await api.get("/api/audit")).json()["entries"]]
+    assert ("first_approval", "Amira") in events and events[-1] == ("rehearsal_applied", "Amira and Ben")
+
+
+async def test_overview_counts_what_rehearsal_did_from_the_audit_log(api):
+    jacket = (await api.post("/api/rehearsals", json={"ticket_id": 1002})).json()["id"]
+    await follow(api, jacket)
+    await api.post(f"/api/rehearsals/{jacket}/approve", json={})
+    attack = (await api.post("/api/rehearsals", json={"ticket_id": 1006, "mode": "simulated"})).json()["id"]
+    await follow(api, attack)
+    await api.post(f"/api/rehearsals/{attack}/reject", json={})
+    api.console.client = tracking_model()
+    await follow(api, (await api.post("/api/rehearsals", json={"ticket_id": 1003})).json()["id"])
+
+    o = (await api.get("/api/overview")).json()
+    assert (o["rehearsed"], o["approved"], o["applied_automatically"], o["cancelled"]) == (3, 1, 1, 1)
+    assert o["high_risk_stopped"] == 1 and o["money_applied_cents"] == 24900 and o["chain_intact"]
+    assert o["money_stopped_cents"] > 300000  # the scripted attack's refunds
 
 
 async def test_writes_must_be_json(api):

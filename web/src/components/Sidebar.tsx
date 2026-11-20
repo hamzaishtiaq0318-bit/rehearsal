@@ -1,4 +1,4 @@
-import { Moon, OctagonPause, PanelLeftClose, SquarePen, ScrollText, Sun } from "lucide-react";
+import { LayoutDashboard, Moon, OctagonPause, PanelLeftClose, SquarePen, ScrollText, Sun } from "lucide-react";
 
 import type { ConversationRow, Status } from "../api";
 import { Logo } from "./Logo";
@@ -8,7 +8,7 @@ interface Props {
   status: Status | null;
   conversations: ConversationRow[];
   selected: string | null;
-  view: "chat" | "audit";
+  view: "chat" | "audit" | "overview";
   theme: "light" | "dark";
   open: boolean;
   onClose: () => void;
@@ -97,6 +97,11 @@ export function Sidebar({ status, conversations, selected, view, theme, open, on
             Pause all agents ({running} running)
           </button>
         )}
+        <a className="foot-link" href="#/overview" aria-current={view === "overview" ? "page" : undefined}
+          onClick={onClose}>
+          <LayoutDashboard size={17} aria-hidden="true" />
+          Overview
+        </a>
         <a className="foot-link" href="#/audit" aria-current={view === "audit" ? "page" : undefined} onClick={onClose}>
           <ScrollText size={17} aria-hidden="true" />
           Audit log

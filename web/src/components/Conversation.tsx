@@ -4,7 +4,9 @@ import {
   ChevronDown,
   CircleAlert,
   Eye,
+  FileText,
   Loader2,
+  MessageSquareReply,
   PenLine,
   RotateCcw,
   ShieldAlert,
@@ -112,6 +114,10 @@ export function Conversation({ id, status, onChanged }: Props) {
   const [showSteps, setShowSteps] = useState(true);
   const [showChanges, setShowChanges] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [report, setReport] = useState<{ fingerprint: string | null; decidedBy: string | null } | null>(null);
+  const [revising, setRevising] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [sending, setSending] = useState(false);
   const [reviewer, setReviewer] = useState(() => {
     try {
       return localStorage.getItem("rehearsal-reviewer") ?? "";
@@ -121,7 +127,7 @@ export function Conversation({ id, status, onChanged }: Props) {
   });
   const endRef = useRef<HTMLDivElement>(null);
   const outcomeRef = useRef<HTMLDivElement>(null);
-  const ids = { steps: useId(), changes: useId(), ack: useId(), name: useId() };
+  const ids = { steps: useId(), changes: useId(), ack: useId(), name: useId(), revise: useId(), feedback: useId() };
   const writes = useMemo(() => new Set(status?.tools.filter((t) => t.writes).map((t) => t.name)), [status]);
   const writesRef = useRef(writes);
   writesRef.current = writes;
@@ -208,7 +214,43 @@ export function Conversation({ id, status, onChanged }: Props) {
   const owners = new Set(review?.changes.map((c) => JSON.stringify(c.owner)).filter((o) => o !== "null"));
   const actions = detail?.actions ?? [];
   const needsAck = review?.risk === "high" && actions.length > 0;
+  // Only a live agent can redo work; recorded runs and simulations are fixed, and the public demo
+  // does not take written instructions.
+  const canRevise = canDecide && detail?.mode === "agent" && !status?.public_demo && !status?.static_demo;
   const target = status?.target ?? "the app";
+
+  async function sendBack() {
+    if (!detail || feedback.trim().length < 3) return;
+    setSending(true);
+    setError(null);
+    try {
+      const again = await api.revise(detail.id, reviewer.trim() || "Reviewer", feedback.trim());
+      onChanged();
+      window.location.hash = `#/c/${again.id}`;
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  /** Open the browser's print dialog on a report of this rehearsal: everything shown, nothing hidden. */
+  async function printReport() {
+    let fingerprint: string | null = null;
+    let decidedBy: string | null = null;
+    try {
+      const log = await api.audit();
+      const mine = log.entries.filter((e) => e.rehearsal === id);
+      fingerprint = mine.length ? String(mine[mine.length - 1]!.hash ?? "") || null : null;
+      decidedBy = [...mine].reverse().find((e) => e.event.startsWith("rehearsal_") && e.by)?.by ?? null;
+    } catch {
+      /* the report still prints; it says the fingerprint was not available */
+    }
+    setReport({ fingerprint, decidedBy });
+    setShowSteps(true);
+    setShowChanges(true);
+    window.setTimeout(() => window.print(), 150);  // let the expanded sections render first
+  }
 
   async function decide(decision: Decision) {
     if (!detail) return;
@@ -243,6 +285,16 @@ export function Conversation({ id, status, onChanged }: Props) {
 
   return (
     <div className="thread">
+      {report && detail && (
+        <div className="print-only report-head">
+          <p className="report-title">Rehearsal incident report</p>
+          <p>{detail.title}. Rehearsal {detail.id}, started {when(detail.created_at)} by {detail.model}.</p>
+          <p>
+            Decision: {detail.outcome ? `${detail.outcome.state}${detail.outcome.auto ? " by the trust policy" : ""}` :
+              "not decided yet"}{report.decidedBy ? `, signed ${report.decidedBy}` : ""}. Printed {when(new Date().toISOString())}.
+          </p>
+        </div>
+      )}
       {detail && (
         <div className="msg user">
           <div className="bubble">
@@ -390,6 +442,13 @@ export function Conversation({ id, status, onChanged }: Props) {
                   {detail?.state === "ready" && (
                     <div className="decide">
                       <p className="agent-text question">Want me to go ahead?</p>
+                      {detail.second_approval && (
+                        <p className="hint" role="status">
+                          {detail.approvals && detail.approvals.length > 0
+                            ? `Approved by ${detail.approvals.join(", ")}. High risk changes need a second person: sign below with a different name to approve.`
+                            : "High risk changes need two different people to approve before anything is applied."}
+                        </p>
+                      )}
                       {needsAck && (
                         <label className="check" htmlFor={ids.ack}>
                           <input id={ids.ack} type="checkbox" checked={acknowledged}
@@ -403,17 +462,39 @@ export function Conversation({ id, status, onChanged }: Props) {
                           disabled={!canDecide || busy !== null || (needsAck && !acknowledged)}
                           onClick={() => decide("approve")}>
                           {busy === "approve" ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <Check size={16} aria-hidden="true" />}
-                          {busy === "approve" ? "Applying" : "Yes, apply it"}
+                          {busy === "approve" ? "Applying"
+                            : detail.second_approval && (detail.approvals?.length ?? 0) > 0 ? "Add the second approval"
+                            : "Yes, apply it"}
                         </button>
                         <button type="button" className="choice" disabled={!canDecide || busy !== null}
                           onClick={() => decide("reject")}>
                           <X size={16} aria-hidden="true" /> No, cancel
                         </button>
+                        {canRevise && (
+                          <button type="button" className="choice" aria-expanded={revising} aria-controls={ids.revise}
+                            disabled={busy !== null} onClick={() => setRevising((v) => !v)}>
+                            <MessageSquareReply size={16} aria-hidden="true" /> Ask for changes
+                          </button>
+                        )}
                         <button type="button" className="choice quiet" aria-expanded={showChanges}
                           aria-controls={ids.changes} onClick={() => setShowChanges((v) => !v)}>
                           {showChanges ? "Hide the changes" : "Show me every change"}
                         </button>
                       </div>
+                      {canRevise && revising && (
+                        <form className="revise" id={ids.revise} onSubmit={(e) => { e.preventDefault(); void sendBack(); }}>
+                          <label htmlFor={ids.feedback}>What should the agent do differently?</label>
+                          <textarea id={ids.feedback} value={feedback} maxLength={500} rows={2}
+                            placeholder="For example: only refund the jacket, and do not add store credit"
+                            onChange={(e) => setFeedback(e.target.value)} />
+                          <div className="revise-bar">
+                            <span className="hint">Sending it back cancels this proposal. The agent redoes the task on a fresh copy.</span>
+                            <button type="submit" className="choice primary" disabled={sending || feedback.trim().length < 3}>
+                              {sending ? <Loader2 size={16} className="spin" aria-hidden="true" /> : null} Send it back
+                            </button>
+                          </div>
+                        </form>
+                      )}
                       <label className="signed" htmlFor={ids.name}>
                         <span>Signed in the audit log as</span>
                         <input id={ids.name} value={reviewer} maxLength={60} placeholder="Reviewer"
@@ -457,6 +538,19 @@ export function Conversation({ id, status, onChanged }: Props) {
           {!detail && error && <p className="error" role="alert">{error}</p>}
         </div>
       </div>
+      {review && !running && (
+        <p className="report-row">
+          <button type="button" className="text-button" onClick={printReport}>
+            <FileText size={15} aria-hidden="true" /> Save a report of this rehearsal
+          </button>
+        </p>
+      )}
+      {report && (
+        <p className="print-only report-foot">
+          Audit fingerprint: {report.fingerprint ?? "not available here"}. Each audit entry carries the hash of the one
+          before it, so this value changes if any earlier entry is edited.
+        </p>
+      )}
       <div ref={endRef} className="thread-end" />
     </div>
   );

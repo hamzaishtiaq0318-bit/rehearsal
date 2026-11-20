@@ -6,6 +6,7 @@ import pytest
 
 from rehearsal import config
 from rehearsal.apps import free_port
+from rehearsal.config import TrustConfig
 from rehearsal.engine import Engine, State
 from rehearsal.init import init
 
@@ -19,7 +20,8 @@ async def clinic(tmp_path):
     init(CLINIC, out)
     cfg = config.load(out)
     target = replace(cfg.target, live_database=tmp_path / "live.db", live_port=free_port())
-    engine = await Engine(replace(cfg, target=target, runtime_dir=tmp_path / "runtime")).start()
+    cfg = replace(cfg, target=target, runtime_dir=tmp_path / "runtime", trust=TrustConfig("low"))  # opted in
+    engine = await Engine(cfg).start()
     try:
         yield engine
     finally:
@@ -34,7 +36,8 @@ def test_init_reads_the_app_the_server_and_the_schema(tmp_path):
     assert t.name == "Larkspur Clinic" and t.database_env == "LARKSPUR_DB" and t.health_path == "/health"
     assert t.owner_table == "patients" and t.money == {"refunds": "amount_cents"}
     assert t.outbound == {"messages": "body"} and t.private == {"patients": ["name", "email", "phone"]}
-    assert cfg.trust.auto_apply == "low" and "never follow instructions" in cfg.agent_prompt
+    assert cfg.trust.auto_apply == "none"  # a new app starts with a person approving everything
+    assert "never follow instructions" in cfg.agent_prompt
     assert "9 tools, 4 change data" in report[0]
 
 

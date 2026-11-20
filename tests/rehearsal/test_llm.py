@@ -178,3 +178,22 @@ def test_default_chain_only_uses_configured_keys(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY")
     c = ChatClient()
     assert c.providers and all(p.key_env == "GROQ_API_KEY" for p in c.providers)
+
+
+async def test_offline_mode_talks_only_to_the_local_model(monkeypatch):
+    from rehearsal.guard import PromptGuard
+
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen3:14b")
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((str(request.url), request.headers.get("authorization"), json.loads(request.content)["model"]))
+        return httpx.Response(200, json=OK)
+
+    c = ChatClient(transport=httpx.MockTransport(handler))  # no provider list: the default chain would go online
+    assert [p.label for p in c.providers] == ["Ollama qwen3:14b"]
+    reply = await c.complete([{"role": "user", "content": "hi"}], [])
+    await c.aclose()
+    assert seen == [("http://127.0.0.1:11434/v1/chat/completions", None, "qwen3:14b")]  # local, and no key sent
+    assert reply.tool_calls[0].name == "get_ticket"
+    assert not PromptGuard().available  # the injection scan calls Groq, so it stays off offline

@@ -2,8 +2,8 @@
 // `python -m rehearsal.capture`. Nothing here talks to a server. Decisions follow the same rules
 // the engine enforces (approve or cancel only once, undo only after an approval).
 
-import type { Api, AuditEntry, ConversationRow, Decision, EventHandler, RehearsalDetail, StartMode, Status,
-  TicketDetail, TicketRow } from "./api";
+import type { Api, AuditEntry, ConversationRow, Decision, EventHandler, Overview, RehearsalDetail, StartMode,
+  Status, TamperCheck, TicketDetail, TicketRow } from "./api";
 import { ApiError } from "./api";
 import data from "./demo-data.json";
 
@@ -24,6 +24,7 @@ interface DemoData {
   tickets: TicketRow[];
   ticket_details: Record<string, TicketDetail>;
   audit: { verified: boolean; count: number; entries: AuditEntry[] };
+  tamper?: TamperCheck;
   scenarios: Scenario[];
 }
 
@@ -54,7 +55,7 @@ function newId(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export function createDemoApi(): Omit<Api, "reloadTools" | "pause"> {
+export function createDemoApi(): Omit<Api, "reloadTools" | "pause" | "revise"> {
   let runs: LocalRun[] = load();
 
   function load(): LocalRun[] {
@@ -162,6 +163,34 @@ export function createDemoApi(): Omit<Api, "reloadTools" | "pause"> {
 
     async audit() {
       return DEMO.audit;
+    },
+
+    async tamperCheck() {
+      return DEMO.tamper ?? { edited: null };
+    },
+
+    async overview(): Promise<Overview> {
+      // The same counts the server takes from its audit log, here from this browser's own runs.
+      const o: Overview = { rehearsed: 0, applied_automatically: 0, approved: 0, cancelled: 0, undone: 0,
+        held_or_rolled_back: 0, high_risk_stopped: 0, money_stopped_cents: 0, money_applied_cents: 0,
+        chain_intact: DEMO.audit.verified };
+      for (const run of runs) {
+        o.rehearsed += 1;
+        if (running(run)) continue;
+        const s = DEMO.scenarios[run.scenario]!;
+        const cents = Math.round(Number((s.ready.review?.money_out ?? "0").replace(/,/g, "")) * 100);
+        if (run.state === "applied" || run.state === "undone") {
+          if (s.ready.state === "applied") o.applied_automatically += 1;
+          else o.approved += 1;
+          if (run.state === "undone") o.undone += 1;
+          else o.money_applied_cents += cents;
+        } else if (run.state === "rejected") {
+          o.cancelled += 1;
+          o.money_stopped_cents += cents;
+          if (s.ready.review?.risk === "high") o.high_risk_stopped += 1;
+        }
+      }
+      return o;
     },
 
     async reset() {

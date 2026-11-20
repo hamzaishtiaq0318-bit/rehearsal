@@ -172,6 +172,11 @@ async def test_audit_log_detects_tampering(engine):
     await r.finish()
     await r.reject(by="reviewer")
     assert engine.audit.verify()
+    before = engine.audit.path.read_text(encoding="utf-8")
+    check = engine.audit.tamper_check()  # the console's demonstration works on a copy
+    assert check["event"] == "rehearsal_rejected" and check["was"] == "reviewer"
+    assert check["broken_at"] == check["edited"] and check["real_log_intact"]
+    assert engine.audit.path.read_text(encoding="utf-8") == before
     lines = engine.audit.path.read_text(encoding="utf-8").splitlines()
     entry = json.loads(lines[1])
     entry["actor"] = "someone else"

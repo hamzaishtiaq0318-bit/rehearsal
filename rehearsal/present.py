@@ -118,6 +118,8 @@ def rehearsal_dict(r: Rehearsal) -> dict:
         "replay": [c.index for c in r.replay_calls()],
         "actions": [action_sentence(c.tool, c.args, r.engine.config.phrases) for c in r.replay_calls()],
         "review": review,
+        "approvals": list(r.approvals),
+        "second_approval": r.needs_second_approval(),
         "outcome": {"state": str(r.outcome.state), "message": r.outcome.message, "verified": r.outcome.verified,
                     "auto": r.outcome.auto} if r.outcome else None,
     }
