@@ -341,6 +341,7 @@ class Console:
 
 
 REVIEWER_NAME = re.compile(r"[A-Za-z][A-Za-z .'-]{0,39}")
+REVIEWER_ROUTE = re.compile(r"/api/rehearsals/[A-Za-z0-9]{1,32}/(approve|reject|undo|revise)")
 
 
 def reviewer_tokens(names: str) -> dict[str, str]:
@@ -411,7 +412,11 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
             # Compare against every token, so the time taken does not reveal which one nearly matched.
             matches = [name for name, t in reviewers.items() if secrets.compare_digest(sent, t)]
             launch = secrets.compare_digest(sent, token)
-            if matches:
+            if matches and not launch:
+                # A reviewer's own link may decide on a review and nothing else: no reset, reload, pause or new runs.
+                if not REVIEWER_ROUTE.fullmatch(request.url.path):
+                    return JSONResponse({"detail": "A reviewer link can only approve, cancel, undo or send back a "
+                                                   "review. Use the console link for anything else."}, status_code=403)
                 request.state.reviewer = matches[0]
             elif not public_demo and not launch:
                 return JSONResponse({"detail": "Open the console with the link printed when Rehearsal started."},

@@ -275,6 +275,10 @@ async def test_high_risk_needs_two_people_each_with_their_own_link(engine):
             assert second["state"] == "applied" and second["outcome"]["verified"]
             events = [(e["event"], e.get("by")) for e in (await client.get("/api/audit")).json()["entries"]]
             assert ("first_approval", "Amira") in events and events[-1] == ("rehearsal_applied", "Amira and Ben")
+            # a reviewer link decides on reviews and nothing else
+            for path, body in [("/api/reset", {}), ("/api/tools/reload", {}), ("/api/pause", {}),
+                               ("/api/rehearsals", {"ticket_id": 1002})]:
+                assert (await client.post(path, json=body, headers=as_("ben-secret"))).status_code == 403, path
     await console.aclose()
 
 
