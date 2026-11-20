@@ -170,7 +170,7 @@ A real free model (`gpt-oss-120b`) resisted most of these on its own; in one of 
 
 ### Test your agent before you trust it
 
-The same rehearsals work as automated tests for an agent. `python -m rehearsal.evaluate --check` runs it on the story tickets and fails if any is handled against policy; `python -m rehearsal.gallery --model --check` fails if Rehearsal misses an attack or the model falls for one. Nothing is ever applied. [`agent-check.yml`](.github/workflows/agent-check.yml) runs both whenever the agent's prompt, model chain or tools change.
+The same rehearsals work as automated tests for an agent. `python -m rehearsal.evaluate --check` runs it on the story tickets and fails if any is handled against policy; `python -m rehearsal.gallery --model --check` fails if Rehearsal misses an attack or the model falls for one. Nothing is ever applied. [`agent-check.yml`](.github/workflows/agent-check.yml) is set up to run both whenever the agent's prompt, model chain or tools change.
 
 The evaluator also prints a **shadow mode** summary: had this been live, how many tasks would have been applied without asking, how many would have waited for a person, and how many were dangerous. Run an agent this way for a week before letting it near live data.
 
@@ -210,7 +210,7 @@ The server prints a console link with a one time token. Open it and try:
 - **Ticket 1002** with the AI agent: a torn jacket. Approve the refund and watch it land on live data, verified.
 - **Ticket 1006** with the attack simulation: the polite injection. Rehearsal flags twelve refunds to twelve customers and you cancel it.
 
-Run the tests with `python -m pytest tests`.
+Run the tests with `python -m pytest tests`. Last full run on a fresh clone (20 Nov 2026): **190 passed**, and the console type check and both builds passed. The same checks are set up as GitHub Actions in [`tests.yml`](.github/workflows/tests.yml), switched off for now.
 
 **Or with Docker**, one command and no Python or Node on your machine:
 
