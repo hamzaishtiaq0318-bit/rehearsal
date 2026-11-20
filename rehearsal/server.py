@@ -7,12 +7,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import secrets
 import tempfile
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -22,13 +23,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from . import config as config_mod
-from .agent import ReplayModel, run_agent
+from .agent import SYSTEM_PROMPT, ReplayModel, run_agent
 from .apps import seed_database
 from .dbdiff import restore_database
 from .engine import Engine, InvalidState, Rehearsal, State
 from .guard import PromptGuard
 from .llm import ChatClient, LLMError
 from .present import rehearsal_dict
+from .risk import money
 from .scenarios import LABEL as SIMULATION_LABEL
 from .scenarios import CompromisedAgent
 
@@ -39,6 +41,9 @@ MAX_ACTIVE = int(os.environ.get("REHEARSAL_MAX_ACTIVE", "3"))
 SIMULATION_TICKET = 1006
 TOKEN_HEADER = "X-Rehearsal-Token"
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
+NTFY_URL = "https://ntfy.sh/"
+# ntfy topics are public by name, so a long random one is the only thing keeping alerts private.
+NTFY_TOPIC = re.compile(r"[A-Za-z0-9_-]{8,64}")
 
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
@@ -129,6 +134,10 @@ class Console:
         # must name a ticket and uses the server's own wording.
         self.public_demo = public_demo
         self.runs: dict[str, Run] = {}
+        # Scripted agents that act out an attack, by ticket: (name of the attack, label shown, agent factory).
+        self.simulations: dict[int, tuple[str, str, Callable[[], Any]]] = {
+            SIMULATION_TICKET: ("A polite billing notice", SIMULATION_LABEL,
+                                lambda: CompromisedAgent(SIMULATION_TICKET))}
         self._http = httpx.AsyncClient(timeout=10)
 
     async def aclose(self) -> None:
@@ -171,9 +180,11 @@ class Console:
             title = req.message[:80]
             request = task = req.message
         if req.mode == "simulated":
-            if req.ticket_id != SIMULATION_TICKET:
-                raise HTTPException(422, f"The simulated compromised agent only runs on ticket {SIMULATION_TICKET}")
-            model, label = CompromisedAgent(req.ticket_id), SIMULATION_LABEL
+            simulation = self.simulations.get(req.ticket_id)
+            if simulation is None:
+                raise HTTPException(422, f"There is no attack simulation for ticket {req.ticket_id}")
+            _, label, make = simulation
+            model = make()
         elif req.mode == "replay":
             path = RECORDINGS / f"ticket-{req.ticket_id}.json"
             if not path.exists():
@@ -199,12 +210,15 @@ class Console:
 
         try:
             agent = await run_agent(run.rehearsal, model, task, on_event=sink,
-                                    max_steps=40 if run.mode == "simulated" else 24)
+                                    max_steps=40 if run.mode == "simulated" else 24,
+                                    system_prompt=self.engine.config.agent_prompt or SYSTEM_PROMPT)
             run.emit("agent_finished", {"summary": agent.summary, "finished": agent.finished,
                                         "models": agent.models, "steps": agent.steps, "error": agent.error})
             if run.rehearsal.state == State.REHEARSING:
-                await run.rehearsal.finish()
+                await run.rehearsal.finish(summary=agent.summary)
+                await run.rehearsal.apply_if_trusted()
             run.emit("review", rehearsal_dict(run.rehearsal))
+            await self.notify(run)
         except Exception as e:  # noqa: BLE001 - surface any failure to the viewer instead of hanging the stream
             run.emit("error", {"message": f"The rehearsal stopped: {type(e).__name__}"})
             if run.rehearsal.state == State.REHEARSING:
@@ -212,6 +226,49 @@ class Console:
         finally:
             run.done = True
             run.emit("done", {"state": str(run.rehearsal.state)})
+
+    async def pause_all(self, by: str) -> int:
+        """Stop every rehearsal that is still running. Their private copies are discarded, so nothing
+        they did reaches live data."""
+        stopped = 0
+        for run in list(self.runs.values()):
+            if run.done:
+                continue
+            if run.task and not run.task.done():
+                run.task.cancel()
+                try:
+                    await run.task
+                except asyncio.CancelledError:
+                    pass
+            if run.rehearsal.state == State.REHEARSING:
+                await run.rehearsal.reject(by=by, reason="Stopped with the pause button. Live data was never touched.")
+            run.emit("error", {"message": "Stopped with the pause button. Nothing reached live data."})
+            if not run.done:  # an outside agent's run has no task to finish it
+                run.done = True
+                run.emit("done", {"state": str(run.rehearsal.state)})
+            stopped += 1
+        self.engine.audit.write("agents_paused", by=by, stopped=stopped)
+        return stopped
+
+    async def notify(self, run: Run) -> None:
+        """Push a phone alert through ntfy.sh when a review is waiting (REHEARSAL_NTFY_TOPIC, off by default).
+        The alert names the ticket, the risk and the totals only: no customer names, no approval link."""
+        topic = os.environ.get("REHEARSAL_NTFY_TOPIC", "")
+        r = run.rehearsal
+        if not topic or r.state != State.READY or not r.review or not r.replay_calls():
+            return
+        if not NTFY_TOPIC.fullmatch(topic):
+            print("REHEARSAL_NTFY_TOPIC must be 8 to 64 letters, digits, - or _. No alert sent.")
+            return
+        n = len(r.replay_calls())
+        text = (f"{run.title}: {r.review.risk} risk, {n} change{'s' if n != 1 else ''} waiting, "
+                f"{money(r.review.money_out_cents)} USD out. Nothing is live until you decide.")
+        try:
+            await self._http.post(NTFY_URL + topic, content=text.encode("utf-8"),
+                                  headers={"Title": "Rehearsal needs your review",
+                                           "Priority": "high" if r.review.risk == "high" else "default"})
+        except httpx.HTTPError:
+            pass  # an alert is a convenience; the review itself is never affected
 
     async def reset(self) -> None:
         if self.active():
@@ -303,6 +360,7 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
             "prompt_guard": bool(c.engine.guard and getattr(c.engine.guard, "available", False)),
             "recordings": sorted(int(p.stem.split("-")[1]) for p in RECORDINGS.glob("ticket-*.json")),
             "simulation_ticket": SIMULATION_TICKET,
+            "simulations": [{"ticket_id": t, "name": name} for t, (name, _, _) in sorted(c.simulations.items())],
             "active": c.active(), "max_active": MAX_ACTIVE,
         }
 
@@ -310,7 +368,10 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
     async def tickets(request: Request) -> list[dict]:
         c = con(request)
         latest: dict[int, Run] = {run.ticket_id: run for run in c.runs.values() if run.ticket_id}
-        rows = await c.live_get("/tickets?limit=50")
+        try:
+            rows = await c.live_get("/tickets?limit=50")
+        except HTTPException:
+            return []  # an app without a ticket queue: the console still takes plain requests
         for row in rows:
             run = latest.get(row["id"])
             row["rehearsal"] = {"id": run.rehearsal.id, "state": str(run.rehearsal.state),
@@ -403,6 +464,24 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
     async def reset(request: Request) -> dict:
         await con(request).reset()
         return {"ok": True}
+
+    @app.post("/api/pause")
+    async def pause(decision: Decision, request: Request) -> dict:
+        return {"stopped": await con(request).pause_all(by=decision.reviewer)}
+
+    @app.post("/api/tools/reload")
+    async def reload_tools(request: Request) -> dict:
+        """Pick up a fresh Synapse build (after synapse build --discover) without restarting."""
+        c = con(request)
+        if public_demo:
+            raise HTTPException(403, "Reloading tools is turned off in the public demo")
+        if c.active():
+            raise HTTPException(409, "Wait for running rehearsals to finish before reloading the tools")
+        before = set(c.engine.tools)
+        names = await c.engine.reload_tools()
+        c.engine.audit.write("tools_reloaded", by="console", server=c.engine.server_file.name, tools=names)
+        return {"server_file": c.engine.server_file.name, "tools": names,
+                "added": sorted(set(names) - before), "removed": sorted(before - set(names))}
 
     # Added last so it runs first: anything not addressed to an allowed host is refused outright.
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)

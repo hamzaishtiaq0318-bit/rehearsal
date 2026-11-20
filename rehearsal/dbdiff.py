@@ -103,6 +103,21 @@ def same_effect(a: list[RowChange], b: list[RowChange], volatile: frozenset[str]
         sorted(c.signature(volatile) for c in meaningful(b, volatile))
 
 
+def display_names(path: Path, table: str | None, ids: list[Any]) -> dict[Any, str]:
+    """A readable name for each owner id, from the first of name, full_name or email the table has."""
+    if not table or not ids:
+        return {}
+    with closing(_readonly(path)) as conn:
+        columns = [r[1] for r in conn.execute(f"PRAGMA table_info({_q(table)})")]
+        column = next((c for c in ("name", "full_name", "email") if c in columns), None)
+        if column is None:
+            return {}
+        key = _primary_key(conn, table)[0]
+        marks = ",".join("?" * len(ids))
+        return {row[0]: str(row[1]) for row in conn.execute(
+            f"SELECT {_q(key)}, {_q(column)} FROM {_q(table)} WHERE {_q(key)} IN ({marks})", list(ids))}
+
+
 class OwnerResolver:
     """Trace a row through foreign keys to the owner table (for example, to its customer)."""
 

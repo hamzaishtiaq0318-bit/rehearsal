@@ -56,13 +56,19 @@ export const VERDICT: Record<Risk, { title: string; body: string }> = {
   },
 };
 
-export function outcomeText(state: string, count: number): { title: string; body: string } {
+export function outcomeText(state: string, count: number, auto = false): { title: string; body: string } {
+  const changes = `${count} ${count === 1 ? "change" : "changes"}`;
   switch (state) {
     case "applied":
-      return {
-        title: "Done. It is live.",
-        body: `I made ${count} ${count === 1 ? "change" : "changes"} on the live store and checked that everything matches what you approved.`,
-      };
+      return auto
+        ? {
+            title: "Applied without asking you, because nothing was flagged.",
+            body: `No money moves, only one customer is involved and nothing looked unusual, so your trust policy let ${changes} through. I checked that the live store matches the rehearsal.`,
+          }
+        : {
+            title: "Done. It is live.",
+            body: `I made ${changes} on the live store and checked that everything matches what you approved.`,
+          };
     case "rejected":
       return { title: "No problem. I left everything as it was.", body: "Nothing was changed on the live store." };
     case "undone":

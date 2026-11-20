@@ -1,4 +1,4 @@
-import { Moon, PanelLeftClose, SquarePen, ScrollText, Sun } from "lucide-react";
+import { Moon, OctagonPause, PanelLeftClose, SquarePen, ScrollText, Sun } from "lucide-react";
 
 import type { ConversationRow, Status } from "../api";
 import { Logo } from "./Logo";
@@ -13,6 +13,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onToggleTheme: () => void;
+  /** Present when this viewer may stop running agents. */
+  onPause?: () => void;
 }
 
 const STATE_TEXT: Record<string, string> = {
@@ -37,7 +39,8 @@ function dotTone(c: ConversationRow): string {
   return "quiet";
 }
 
-export function Sidebar({ status, conversations, selected, view, theme, open, onClose, onToggleTheme }: Props) {
+export function Sidebar({ status, conversations, selected, view, theme, open, onClose, onToggleTheme, onPause }: Props) {
+  const running = conversations.filter((c) => c.running).length;
   const groups = new Map<string, ConversationRow[]>();
   for (const c of conversations) {
     const label = dayLabel(c.created_at);
@@ -88,17 +91,30 @@ export function Sidebar({ status, conversations, selected, view, theme, open, on
       </nav>
 
       <div className="sidebar-foot">
+        {onPause && running > 0 && (
+          <button type="button" className="foot-link pause-all" onClick={onPause}>
+            <OctagonPause size={17} aria-hidden="true" />
+            Pause all agents ({running} running)
+          </button>
+        )}
         <a className="foot-link" href="#/audit" aria-current={view === "audit" ? "page" : undefined} onClick={onClose}>
           <ScrollText size={17} aria-hidden="true" />
           Audit log
         </a>
         <div className="foot-row">
-          {status && (
+          {status && (status.models.length > 0 ? (
             <span className="model-status" title="Free AI models ready right now">
               <span className="dot" data-tone={ready > 0 ? "good" : "review"} aria-hidden="true" />
               {ready} free models ready
             </span>
-          )}
+          ) : (
+            <span className="model-status" title={status.static_demo
+              ? "Real engine runs, captured earlier and replayed in your browser"
+              : "No model key is set on this server, so recorded runs stand in"}>
+              <span className="dot" data-tone="quiet" aria-hidden="true" />
+              {status.static_demo ? "Browser demo" : "Recorded runs only"}
+            </span>
+          ))}
           <button type="button" className="icon-button" onClick={onToggleTheme}
             aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>
             {theme === "dark" ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}

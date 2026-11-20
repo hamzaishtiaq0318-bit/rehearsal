@@ -18,6 +18,7 @@ const EVENT_LABEL: Record<string, string> = {
   rollback_verified: "Rollback verified",
   rollback_unverified: "Rollback not verified",
   demo_reset: "Demo data reset",
+  tools_reloaded: "Tools reloaded",
 };
 
 function details(e: AuditEntry): string {
@@ -36,7 +37,21 @@ function details(e: AuditEntry): string {
 export function AuditView({ publicDemo, onReset }: { publicDemo: boolean; onReset: () => void }) {
   const [data, setData] = useState<{ verified: boolean; entries: AuditEntry[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reloaded, setReloaded] = useState<string | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
+
+  async function reloadTools() {
+    setReloaded(null);
+    try {
+      const r = await api.reloadTools();
+      const changes = [r.added.length ? `added ${r.added.join(", ")}` : "", r.removed.length ? `removed ${r.removed.join(", ")}` : ""]
+        .filter(Boolean).join("; ");
+      setReloaded(`Loaded ${r.server_file} with ${r.tools.length} tools${changes ? `: ${changes}` : ", no changes"}.`);
+      load();
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
 
   const load = useCallback(() => {
     api
@@ -129,6 +144,20 @@ export function AuditView({ publicDemo, onReset }: { publicDemo: boolean; onRese
           <button type="button" className="button" onClick={() => dialog.current?.showModal()}>
             <RefreshCcw size={17} aria-hidden="true" /> Reset demo data
           </button>
+        </section>
+      )}
+
+      {hasToken() && !publicDemo && (
+        <section className="card" aria-labelledby="tools-title">
+          <h2 id="tools-title">Synapse tools</h2>
+          <p className="hint spaced-y">
+            Rebuilt the MCP server with <code>synapse build --discover</code>? Load it without restarting. A rehearsal
+            made with the old server is refused at approval and must be run again.
+          </p>
+          <button type="button" className="button" onClick={reloadTools}>
+            <RefreshCcw size={17} aria-hidden="true" /> Reload tools
+          </button>
+          {reloaded && <p className="hint spaced-y" role="status">{reloaded}</p>}
         </section>
       )}
 

@@ -103,7 +103,7 @@ async def evaluate(runs: int, tickets: list[int], providers: list[Provider], out
                 r = await engine.rehearse(f"Resolve support ticket {ticket_id}.", actor="evaluator")
                 agent = await run_agent(r, client, f"Resolve support ticket {ticket_id}.",
                                         system_prompt=PROMPTS[prompt])
-                review = await r.finish()
+                review = await r.finish(summary=agent.summary)
                 problems = grade(ticket_id, review, r.base_db) if not agent.error else [f"agent error: {agent.error}"]
                 await r.reject(by="evaluator", reason="Evaluation run")
                 guard_scores = [c.injection_score for c in r.calls if c.injection_score is not None]

@@ -22,9 +22,24 @@ owner_table = "customers"
 refunds = "amount_cents"
 credits = "amount_cents"
 
+# Tables whose new rows are text sent outside the business, and the column holding the text.
+# Rehearsal checks the money a reply talks about against the money that actually moves.
+[target.outbound]
+messages = "body"
+
+# Columns holding personal data. Outbound text carrying another customer's values is flagged as a leak.
+[target.private]
+customers = ["email", "name"]
+
 [risk]
 single_payment_limit_cents = 50000
 bulk_rows = 5
+
+# "low": a rehearsal that raises no flag at all (no money, one customer, nothing unusual) is applied
+# without asking. It is still verified against the rehearsal, logged and undoable.
+# "none": a person approves every change.
+[trust]
+auto_apply = "low"
 
 # How each write tool is described to the reviewer, in plain words. Tools not listed get a generic sentence.
 [phrases]

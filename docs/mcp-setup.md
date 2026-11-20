@@ -111,6 +111,23 @@ machine is outside what any local approval step can contain.
 Run either the proxy or `python -m rehearsal.server`, not both: whichever starts first owns the
 live app.
 
+## A second app, from a generated config
+
+[Larkspur Clinic](../legacy/larkspur_clinic/) shows the same cycle on an unrelated app. Synapse
+generated its server, and `python -m rehearsal.init` wrote [its config](../examples/larkspur.toml)
+from that server, the app's code and its database schema:
+
+```bash
+cd legacy/larkspur_clinic
+synapse build --local --auto --discover --base-url http://127.0.0.1:8200 \
+  --endpoints "GET /inbox,GET /patients/{patient_id},GET /patients/{patient_id}/messages,POST /patients/{patient_id}/messages,GET /appointments/{appointment_id},POST /appointments/{appointment_id}/cancel,PATCH /appointments/{appointment_id},GET /invoices/{invoice_id},POST /invoices/{invoice_id}/refunds"
+cd ../.. && python -m rehearsal.init legacy/larkspur_clinic --out examples/larkspur.toml
+```
+
+Nine of eleven endpoints are exposed; the health check and the permanent patient delete are not.
+For MCP proxy mode on the clinic, run `REHEARSAL_CONFIG=examples/larkspur.toml python -m
+rehearsal.proxy --print-config`: the printed entry starts Rehearsal on that config.
+
 ## Synapse behaviour we found and worked around
 
 Found while building with Synapse CLI 0.1.9 on Windows. Each one is handled in Rehearsal and

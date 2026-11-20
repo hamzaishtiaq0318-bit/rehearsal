@@ -463,6 +463,26 @@ code {
   color: var(--text);
 }
 
+button.foot-link {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.foot-link.pause-all {
+  color: var(--high);
+}
+
+.foot-link.pause-all:hover {
+  background: var(--high-bg);
+  color: var(--high);
+}
+
 .foot-row {
   display: flex;
   align-items: center;
@@ -626,6 +646,10 @@ code {
 
 .ticket-chip .mono {
   color: var(--muted);
+}
+
+.attack-chip svg {
+  color: var(--high);
 }
 
 /* ---------------------------------------------------------------- composer */
@@ -1086,6 +1110,233 @@ code {
   margin-left: -22px;
   color: var(--muted);
   font-size: 14px;
+}
+
+/* "Why?" on each proposed action */
+.why summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-height: 32px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--radius-sm);
+}
+
+.why summary::-webkit-details-marker {
+  display: none;
+}
+
+.why summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.why-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+  transition-property: background-color, color;
+  transition-duration: 150ms;
+}
+
+.why summary:hover .why-toggle {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.why-toggle svg {
+  transition: transform 200ms var(--ease);
+}
+
+.why[open] .why-toggle svg {
+  transform: rotate(180deg);
+}
+
+.why-body {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.why-body p {
+  margin: 0;
+}
+
+.why-risk {
+  color: var(--high);
+}
+
+.why-quote {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--high);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--high-bg);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.why-quote mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: var(--high);
+  color: var(--surface);
+  font-weight: 600;
+}
+
+.why-label {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.why-rows {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+.why-step {
+  font-size: 12.5px;
+}
+
+.step-ref {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.reply-preview {
+  padding: 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.reply-text {
+  margin: 4px 0 12px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--border-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface-2);
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The blast radius: who a task's changes touch */
+.blast {
+  margin: 0;
+  padding: 12px 16px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.blast svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 300px;
+}
+
+.blast-edge {
+  stroke: var(--high);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 4;
+  opacity: 0.55;
+}
+
+.blast-home {
+  fill: var(--surface-3);
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+}
+
+.blast-home-text {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.blast-other {
+  fill: var(--high-bg);
+  stroke: var(--high);
+  stroke-width: 2;
+}
+
+.blast-name {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.blast figcaption {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.blast figcaption strong {
+  color: var(--text);
+}
+
+/* What the agent said, set against what the changes would do */
+.saydo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  border: 1px solid var(--high);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.saydo > div {
+  padding: 12px 16px;
+}
+
+.saydo > div + div {
+  background: var(--high-bg);
+}
+
+.saydo-label {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.saydo-said {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.saydo-gap {
+  margin-top: 12px;
+}
+
+.saydo ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .facts-row {

@@ -5,8 +5,9 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from .dbdiff import RowChange
-from .engine import Rehearsal
-from .risk import money
+from .engine import Rehearsal, row_id
+from .explain import outbound_texts
+from .risk import money, money_out
 
 
 def _label(table: str) -> str:
@@ -75,10 +76,25 @@ def action_sentence(tool: str, args: dict[str, Any], phrases: dict[str, str]) ->
     return f"{_plain(tool).capitalize()}" + (f" ({details})" if details else "")
 
 
+def blast_radius(r: Rehearsal) -> list[dict]:
+    """Everyone the changes touch: how many of their rows change and how much money they would get."""
+    paid = {id(c): cents for c, cents in money_out(r.review.changes, r.engine.target)}
+    people: dict[Any, dict] = {}
+    for c, owner in zip(r.review.changes, r.review.owners):
+        if owner is None:
+            continue
+        entry = people.setdefault(owner, {"id": owner, "name": r.owner_names.get(owner, ""), "rows": 0,
+                                          "money_cents": 0})
+        entry["rows"] += 1
+        entry["money_cents"] += paid.get(id(c), 0)
+    return list(people.values())
+
+
 def rehearsal_dict(r: Rehearsal) -> dict:
     volatile = r.engine.target.volatile_columns
     review = None
     if r.review:
+        causes = [r.causes.get(row_id(c), []) for c in r.review.changes]
         review = {
             "risk": r.review.risk,
             "money_out": money(r.review.money_out_cents),
@@ -86,8 +102,15 @@ def rehearsal_dict(r: Rehearsal) -> dict:
             "changes": [{"table": c.table, "key": c.key, "kind": c.kind, "owner": owner,
                          "summary": describe(c, volatile),
                          "columns": c.changed_columns if c.kind == "changed" else [],
-                         "before": c.before, "after": c.after}
-                        for c, owner in zip(r.review.changes, r.review.owners)],
+                         "before": c.before, "after": c.after, "caused_by": caused}
+                        for c, owner, caused in zip(r.review.changes, r.review.owners, causes)],
+            # One entry per action, in the order of "actions": which rows it changes and where its targets came from.
+            "explain": [{"call": c.index, "rows": [i for i, caused in enumerate(causes) if c.index in caused],
+                         "sources": [s.to_dict() for s in r.sources.get(c.index, [])]}
+                        for c in r.replay_calls()],
+            "summary": r.summary,
+            "replies": outbound_texts(r.review.changes, r.engine.target),
+            "blast": blast_radius(r),
         }
     return {
         "id": r.id, "task": r.task, "actor": r.actor, "state": str(r.state), "created_at": r.created_at,
@@ -95,6 +118,6 @@ def rehearsal_dict(r: Rehearsal) -> dict:
         "replay": [c.index for c in r.replay_calls()],
         "actions": [action_sentence(c.tool, c.args, r.engine.config.phrases) for c in r.replay_calls()],
         "review": review,
-        "outcome": {"state": str(r.outcome.state), "message": r.outcome.message, "verified": r.outcome.verified}
-        if r.outcome else None,
+        "outcome": {"state": str(r.outcome.state), "message": r.outcome.message, "verified": r.outcome.verified,
+                    "auto": r.outcome.auto} if r.outcome else None,
     }

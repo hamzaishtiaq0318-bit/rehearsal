@@ -1,0 +1,60 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  engine:
+    name: Engine, console API and MCP proxy
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest tests -q
+
+  console:
+    name: Console typecheck and builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: npm run build:demo
+
+  docker:
+    name: Docker image starts and serves the console
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t rehearsal .
+      - run: docker run -d --name rehearsal -p 8000:8000 rehearsal
+      - name: Wait for the console, then check the API and the page
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8000/api/status > status.json; then break; fi
+            sleep 2
+          done
+          grep -q '"target":"Kestrel Desk"' status.json
+          curl -fsS http://localhost:8000/ | grep -q '<div id="root">'
+      - if: failure()
+        run: docker logs rehearsal

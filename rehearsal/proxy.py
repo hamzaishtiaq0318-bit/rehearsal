@@ -15,6 +15,7 @@ import socket
 import sys
 import traceback
 import webbrowser
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import uvicorn
@@ -95,6 +96,10 @@ class Bridge:
             if name == STATUS:
                 return self._status(), False
             args = args if isinstance(args, dict) else {}
+            if self.current and self.current.done:  # stopped from the console (the pause button)
+                self.current = None
+                return ("A person stopped this task from the Rehearsal console. Nothing reached live data. "
+                        "Tell the user and wait for new instructions."), True
             run = self.current or await self._open_run()
             if len(run.rehearsal.calls) >= MAX_STEPS:
                 result = run.rehearsal.record_blocked(name, args, f"step limit of {MAX_STEPS} tool calls reached. "
@@ -126,13 +131,13 @@ class Bridge:
         # The agent's account of the request is a claim, not the user's words: it stays in the agent's
         # message, labelled, and never replaces the neutral title the reviewer trusts.
         claimed = _text(args.get("request"), 500)
-        summary = _text(args.get("summary"), 2000, lines=True)
-        if claimed:
-            summary = f"**Request, as the agent reported it:** {claimed}\n\n{summary}"
+        said = _text(args.get("summary"), 2000, lines=True)
+        summary = f"**Request, as the agent reported it:** {claimed}\n\n{said}" if claimed else said
         run.emit("agent_finished", {"summary": summary, "finished": True, "models": [self.client],
                                     "steps": len(run.rehearsal.calls), "error": None})
         try:
-            await run.rehearsal.finish()
+            await run.rehearsal.finish(summary=said)
+            trusted = await run.rehearsal.apply_if_trusted()
             run.emit("review", rehearsal_dict(run.rehearsal))
         except Exception:
             run.emit("error", {"message": "The review could not be prepared, so the rehearsal was cancelled."})
@@ -146,6 +151,9 @@ class Bridge:
 
         details = rehearsal_dict(run.rehearsal)
         link = f"{self.console_url}/#/c/{run.rehearsal.id}"
+        if trusted:
+            return (f"Applied automatically: nothing in the review raised a flag, and the trust policy lets low "
+                    f"risk work through. {trusted.message} A person can undo it in the console: {link}"), False
         if not details["actions"]:
             return f"Submitted. Nothing you did changes live data, so there is nothing to approve. Record: {link}", False
         approve_link = f"{self.console_url}/?token={self._token}#/c/{run.rehearsal.id}"
@@ -262,6 +270,8 @@ def main() -> None:
     if "--print-config" in sys.argv:  # the snippet to paste into Claude Desktop, Cursor or another client
         entry = {"command": sys.executable, "args": ["-m", "rehearsal.proxy"],
                  "env": {"PYTHONPATH": str(config_mod.ROOT)}}
+        if os.environ.get("REHEARSAL_CONFIG"):  # protecting another app: the client must start it on that config
+            entry["env"]["REHEARSAL_CONFIG"] = str(Path(os.environ["REHEARSAL_CONFIG"]).resolve())
         print(json.dumps({"mcpServers": {"rehearsal": entry}}, indent=2))
         return
     # REHEARSAL_OPEN_BROWSER=0 (headless machines): the log names the rehearsal waiting for review, and the

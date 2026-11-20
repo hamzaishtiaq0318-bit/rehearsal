@@ -22,8 +22,12 @@ export interface Status {
   prompt_guard: boolean;
   recordings: number[];
   simulation_ticket: number;
+  /** Tickets a scripted agent can act out as an attack, with the attack's name. */
+  simulations?: { ticket_id: number; name: string }[];
   active: number;
   max_active: number;
+  /** Set only by the website's browser demo, which replays recorded runs with no server. */
+  static_demo?: boolean;
 }
 
 export interface TicketRow {
@@ -52,6 +56,8 @@ export interface Flag {
   level: Risk;
   title: string;
   detail: string;
+  /** effect: what would change. source: where the targets came from. say_do: words against actions. */
+  rule?: "effect" | "source" | "say_do";
 }
 
 export interface Change {
@@ -60,6 +66,37 @@ export interface Change {
   kind: "added" | "changed" | "removed";
   owner: unknown;
   summary: string;
+  /** The recorded calls that changed this row. */
+  caused_by?: number[];
+}
+
+/** Where one id an action works on first came from. */
+export interface Source {
+  arg: string;
+  value: string | number;
+  kind: "request" | "data" | "text" | "unknown";
+  call: number | null;
+  tool: string | null;
+  excerpt: string | null;
+}
+
+/** Why one action is proposed: the rows it changes and where its targets came from. */
+export interface Explanation {
+  call: number;
+  rows: number[];
+  sources: Source[];
+}
+
+export interface Review {
+  risk: Risk;
+  money_out: string;
+  flags: Flag[];
+  changes: Change[];
+  explain?: Explanation[];
+  summary?: string;
+  replies?: string[];
+  /** Everyone the changes touch, with how many of their rows change and the money they would get. */
+  blast?: { id: string | number; name: string; rows: number; money_cents: number }[];
 }
 
 export interface Call {
@@ -100,8 +137,9 @@ export interface RehearsalDetail {
   created_at: string;
   calls: Call[];
   replay: number[];
-  review: { risk: Risk; money_out: string; flags: Flag[]; changes: Change[] } | null;
-  outcome: { state: string; message: string; verified: boolean } | null;
+  review: Review | null;
+  /** auto: decided by the trust policy (no flags at all) rather than a person. */
+  outcome: { state: string; message: string; verified: boolean; auto?: boolean } | null;
   mode: StartMode | "external";
   model: string;
   running: boolean;
@@ -183,7 +221,29 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 
 export type Decision = "approve" | "reject" | "undo";
 
-export const api = {
+/** Receives each event of a rehearsal once, in order. */
+export type EventHandler = (kind: string, data: Record<string, unknown>) => void;
+
+export const EVENT_KINDS = ["started", "message", "tool_call", "tool_result", "agent_finished", "error", "review",
+  "done"] as const;
+
+/** Follow a rehearsal's live event stream. Returns a function that stops listening. */
+function subscribe(id: string, on: EventHandler): () => void {
+  const source = new EventSource(`/api/rehearsals/${encodeURIComponent(id)}/events`);
+  const seen = new Set<string>();
+  for (const kind of EVENT_KINDS) {
+    source.addEventListener(kind, (event) => {
+      const message = event as MessageEvent<unknown>;
+      // A dropped connection also fires "error", with no data; EventSource reconnects by itself.
+      if (typeof message.data !== "string" || seen.has(message.lastEventId)) return;
+      seen.add(message.lastEventId);
+      on(kind, JSON.parse(message.data) as Record<string, unknown>);
+    });
+  }
+  return () => source.close();
+}
+
+const live = {
   status: () => request<Status>("/api/status"),
   tickets: () => request<TicketRow[]>("/api/tickets"),
   ticket: (id: number) => request<TicketDetail>(`/api/tickets/${id}`),
@@ -195,8 +255,50 @@ export const api = {
     request<RehearsalDetail>(`/api/rehearsals/${encodeURIComponent(id)}/${decision}`, { reviewer, reason }),
   audit: () => request<{ verified: boolean; count: number; entries: AuditEntry[] }>("/api/audit"),
   reset: () => request<{ ok: boolean }>("/api/reset", {}),
-  eventsUrl: (id: string) => `/api/rehearsals/${encodeURIComponent(id)}/events`,
+  reloadTools: () =>
+    request<{ server_file: string; tools: string[]; added: string[]; removed: string[] }>("/api/tools/reload", {}),
+  pause: (reviewer: string) => request<{ stopped: number }>("/api/pause", { reviewer }),
+  subscribe,
 };
+
+export type Api = typeof live;
+
+/** The website's "Try it" build (vite build --mode static) runs on recorded engine runs, with no server. */
+export const STATIC_DEMO = import.meta.env.MODE === "static";
+
+function staticApi(): Api {
+  const demo = import("./demo").then((m) => m.createDemoApi());
+  const call = <K extends Exclude<keyof Api, "subscribe" | "reloadTools" | "pause">>(name: K) =>
+    (async (...args: unknown[]) => ((await demo)[name] as (...a: unknown[]) => unknown)(...args)) as Api[K];
+  return {
+    status: call("status"),
+    tickets: call("tickets"),
+    ticket: call("ticket"),
+    rehearsal: call("rehearsal"),
+    conversations: call("conversations"),
+    start: call("start"),
+    decide: call("decide"),
+    audit: call("audit"),
+    reset: call("reset"),
+    reloadTools: async () => {
+      throw new ApiError(403, "The browser demo has no tool server to reload");
+    },
+    pause: async () => ({ stopped: 0 }),
+    subscribe: (id, on) => {
+      let stop = () => undefined as void;
+      let stopped = false;
+      void demo.then((d) => {
+        if (!stopped) stop = d.subscribe(id, on);
+      });
+      return () => {
+        stopped = true;
+        stop();
+      };
+    },
+  };
+}
+
+export const api: Api = STATIC_DEMO ? staticApi() : live;
 
 export const errorMessage = (e: unknown): string =>
   e instanceof Error ? e.message : "Something went wrong. Please try again.";

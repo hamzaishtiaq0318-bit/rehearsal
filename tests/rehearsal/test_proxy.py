@@ -53,6 +53,15 @@ async def test_outside_agent_works_on_a_copy_until_a_person_approves(bridge, eng
     assert await live_order(engine, 5003) != before
 
 
+async def test_outside_work_with_no_flags_is_applied_by_the_trust_policy(bridge):
+    await bridge.call("get_ticket", {"ticket_id": 1003})
+    await bridge.call("update_ticket", {"ticket_id": 1003, "status": "pending"})
+    text, error = await bridge.call("submit_for_review", {"request": "Park ticket 1003",
+                                                          "summary": "Marked ticket 1003 as pending."})
+    assert not error and text.startswith("Applied automatically") and bridge.opened == []
+    assert bridge.last.rehearsal.state == State.APPLIED and bridge.last.rehearsal.outcome.auto
+
+
 async def test_token_never_reaches_the_log_when_no_browser_opens(engine, capsys):
     b = proxy.Bridge(server.Console(engine, None), "http://127.0.0.1:9", "secret-token", lambda url: False)
     await b.call("refund_order", {"order_id": 5003, "amount": 249, "reason": "Torn sleeve"})

@@ -1,4 +1,4 @@
-import { CircleAlert, PanelLeftOpen, ShieldAlert, Wrench } from "lucide-react";
+import { CircleAlert, Info, PanelLeftOpen, ShieldAlert, Wrench } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import type { ConversationRow, StartMode, Status, TicketRow } from "./api";
@@ -52,7 +52,13 @@ interface StartProps {
 function NewChat({ status, tickets, canSend, busy, onStart }: StartProps) {
   const open = tickets.filter((t) => t.status !== "closed");
   const attack = status?.simulation_ticket ?? 1006;
-  const others = open.filter((t) => t.id !== attack && t.id !== 1002);
+  const gallery = (status?.simulations ?? []).filter((s) => s.ticket_id !== attack);
+  const staged = new Set(gallery.map((s) => s.ticket_id));
+  const others = open.filter((t) => t.id !== attack && t.id !== 1002 && !staged.has(t.id));
+  // With no model key on the server, each ticket's recorded real model run stands in for the live agent.
+  const live = (status?.models.length ?? 0) > 0;
+  const modeFor = (id: number): StartMode | null =>
+    live ? "agent" : status?.recordings.includes(id) ? "replay" : null;
   return (
     <div className="new-chat-view">
       <div className="hello">
@@ -72,22 +78,38 @@ function NewChat({ status, tickets, canSend, busy, onStart }: StartProps) {
           <span className="starter-text">Ticket {attack} hides an instruction to refund twelve strangers. A scripted
             agent falls for it.</span>
         </button>
-        <button type="button" className="starter" disabled={!canSend || busy}
-          onClick={() => onStart({ ticket_id: 1002, mode: "agent" })}>
+        <button type="button" className="starter" disabled={!canSend || busy || !modeFor(1002)}
+          onClick={() => onStart({ ticket_id: 1002, mode: modeFor(1002) ?? "agent" })}>
           <span className="starter-icon"><Wrench size={18} aria-hidden="true" /></span>
           <span className="starter-title">Let the AI agent fix a torn jacket</span>
-          <span className="starter-text">A real free model handles ticket 1002. You approve the refund it
-            proposes.</span>
+          <span className="starter-text">
+            {live ? "A real free model handles ticket 1002." : "A real model's recorded run handles ticket 1002."} You
+            approve the refund it proposes.
+          </span>
         </button>
       </div>
+
+      {gallery.length > 0 && (
+        <div className="more-tickets">
+          <p>More attacks to try</p>
+          <div className="ticket-chips">
+            {gallery.map((s) => (
+              <button key={s.ticket_id} type="button" className="ticket-chip attack-chip" disabled={!canSend || busy}
+                onClick={() => onStart({ ticket_id: s.ticket_id, mode: "simulated" })}>
+                <ShieldAlert size={15} aria-hidden="true" /> {s.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {others.length > 0 && (
         <div className="more-tickets">
           <p>Or pick another open ticket</p>
           <div className="ticket-chips">
             {others.map((t) => (
-              <button key={t.id} type="button" className="ticket-chip" disabled={!canSend || busy}
-                onClick={() => onStart({ ticket_id: t.id, mode: "agent" })}>
+              <button key={t.id} type="button" className="ticket-chip" disabled={!canSend || busy || !modeFor(t.id)}
+                onClick={() => onStart({ ticket_id: t.id, mode: modeFor(t.id) ?? "agent" })}>
                 <span className="mono">{t.id}</span> {t.subject}
               </button>
             ))}
@@ -164,6 +186,21 @@ export function App() {
     }
   }
 
+  async function pauseAll() {
+    let reviewer = "Reviewer";
+    try {
+      reviewer = localStorage.getItem("rehearsal-reviewer") || reviewer;
+    } catch {
+      /* storage blocked: the default name is used */
+    }
+    try {
+      await api.pause(reviewer);
+      refresh();
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
+
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
@@ -181,7 +218,8 @@ export function App() {
       <a className="skip-link" href="#content">Skip to content</a>
       <Sidebar status={status} conversations={conversations} selected={route.view === "chat" ? route.id : null}
         view={route.view === "audit" ? "audit" : "chat"} theme={theme} open={menuOpen}
-        onClose={() => setMenuOpen(false)} onToggleTheme={toggleTheme} />
+        onClose={() => setMenuOpen(false)} onToggleTheme={toggleTheme}
+        onPause={hasToken() && !status?.static_demo ? pauseAll : undefined} />
       <button type="button" className="scrim" aria-hidden="true" tabIndex={-1} onClick={() => setMenuOpen(false)} />
 
       <div className="stage">
@@ -193,6 +231,15 @@ export function App() {
           <a className="brand" href="#/"><Logo /><span>Rehearsal</span></a>
         </header>
 
+        {status?.static_demo && (
+          <p className="banner" role="note">
+            <Info size={17} aria-hidden="true" />
+            <span>
+              Browser demo of real engine runs, replayed here. <a href="/docs">Run it yourself</a> for the live
+              agent.
+            </span>
+          </p>
+        )}
         {status && !canSend && (
           <p className="banner" role="note">
             <CircleAlert size={17} aria-hidden="true" />

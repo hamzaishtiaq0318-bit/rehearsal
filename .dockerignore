@@ -1,0 +1,17 @@
+.env
+.env.*
+.git
+.venv
+.firebase
+.playwright-mcp
+.pytest_cache
+**/__pycache__
+**/.synapse
+**/node_modules
+web/dist
+runtime
+graphify-out
+site
+tests
+*.pdf
+*.db

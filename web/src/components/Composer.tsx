@@ -39,12 +39,17 @@ export function Composer({ status, ticketIds, canSend, busy, placeholder, initia
   const ids = { input: useId(), modes: useId(), hint: useId() };
 
   const ticket = findTicket(text, ticketIds);
+  const liveAgent = (status?.models.length ?? 0) > 0;
   const available: Record<Mode, boolean> = {
-    agent: true,
+    agent: liveAgent,
     replay: ticket !== null && (status?.recordings.includes(ticket) ?? false),
-    simulated: ticket !== null && ticket === status?.simulation_ticket,
+    simulated: ticket !== null && (ticket === status?.simulation_ticket ||
+      Boolean(status?.simulations?.some((s) => s.ticket_id === ticket))),
   };
-  const effectiveMode: Mode = available[mode] ? mode : "agent";
+  // Without a model key on the server, a recorded run stands in for the live agent.
+  const effectiveMode: Mode | null = available[mode]
+    ? mode
+    : (["agent", "replay", "simulated"] as const).find((m) => available[m]) ?? null;
 
   useEffect(() => setText(initial), [initial]);
 
@@ -61,11 +66,11 @@ export function Composer({ status, ticketIds, canSend, busy, placeholder, initia
   }, [autoFocus]);
 
   const trimmed = text.trim();
-  const needsTicket = Boolean(status?.public_demo) && ticket === null;
-  const ready = canSend && !busy && trimmed.length >= 2 && !needsTicket;
+  const needsTicket = (Boolean(status?.public_demo) || !liveAgent) && ticket === null;
+  const ready = canSend && !busy && trimmed.length >= 2 && !needsTicket && effectiveMode !== null;
 
   function submit() {
-    if (!ready) return;
+    if (!ready || effectiveMode === null) return;
     onSubmit({ message: trimmed, ticketId: ticket, mode: effectiveMode });
   }
 
@@ -123,9 +128,15 @@ export function Composer({ status, ticketIds, canSend, busy, placeholder, initia
         {!canSend
           ? "Read only. Open the link printed when Rehearsal started to send requests."
           : needsTicket
-            ? "In the public demo, mention a ticket number, for example: please resolve ticket 1002."
-            : ticket
+            ? status?.static_demo
+              ? "In this browser demo, pick a run above or mention its ticket, for example: please resolve ticket 1002."
+              : status?.public_demo
+              ? "In the public demo, mention a ticket number, for example: please resolve ticket 1002."
+              : "No model key is set, so mention a ticket with a recorded run, for example: please resolve ticket 1002."
+            : ticket && effectiveMode
             ? `Ticket ${ticket} attached. ${MODES[effectiveMode].hint}`
+            : ticket
+            ? `Ticket ${ticket} has no recorded run, and no model key is set on this server.`
             : "Nothing touches live data until you approve. Enter to send, Shift and Enter for a new line."}
       </p>
     </form>

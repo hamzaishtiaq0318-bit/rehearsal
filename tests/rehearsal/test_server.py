@@ -1,10 +1,13 @@
 """The console API end to end over HTTP, with a scripted model and a real engine."""
+import asyncio
 import json
+from dataclasses import replace
 
 import httpx
 import pytest
 
 from rehearsal import server
+from rehearsal.config import TrustConfig
 from rehearsal.llm import Reply, ToolCall
 
 pytestmark = pytest.mark.anyio
@@ -89,6 +92,100 @@ async def test_simulated_attack_is_reviewed_and_rejected(api):
     rejected = await api.post(f"/api/rehearsals/{rid}/reject", json={"reason": "Prompt injection"})
     assert rejected.json()["state"] == "rejected"
     assert (await api.get("/api/tickets/1006")).json()["status"] == "open"
+
+
+def tracking_model():
+    """Ticket 1003: tell the customer the order shipped and close the ticket. No money, one customer."""
+    return ScriptedModel(
+        reply(("get_ticket", {"ticket_id": 1003})),
+        reply(("reply_to_ticket", {"ticket_id": 1003, "body": "Your order has shipped. Tracking is in your account."}),
+              ("update_ticket", {"ticket_id": 1003, "status": "closed"})),
+        reply(text="Told Priya her order shipped and closed the ticket."))
+
+
+async def test_work_with_no_flags_is_applied_by_the_trust_policy(api):
+    api.console.client = tracking_model()
+    rid = (await api.post("/api/rehearsals", json={"ticket_id": 1003})).json()["id"]
+    await follow(api, rid)
+    detail = (await api.get(f"/api/rehearsals/{rid}")).json()
+    assert detail["review"]["risk"] == "low" and detail["review"]["flags"] == []
+    assert detail["state"] == "applied" and detail["outcome"]["auto"] and detail["outcome"]["verified"]
+    assert (await api.get("/api/tickets/1003")).json()["status"] == "closed"
+    assert (await api.get("/api/audit")).json()["entries"][-1]["by"] == "Trust policy"
+    assert (await api.post(f"/api/rehearsals/{rid}/undo", json={})).json()["state"] == "undone"
+    assert (await api.get("/api/tickets/1003")).json()["status"] == "open"
+
+
+async def test_money_always_waits_for_a_person(api):
+    rid = (await api.post("/api/rehearsals", json={"ticket_id": 1002})).json()["id"]  # the 249.00 refund
+    await follow(api, rid)
+    assert (await api.get(f"/api/rehearsals/{rid}")).json()["state"] == "ready"
+
+
+async def test_trust_policy_none_asks_about_everything(api):
+    api.console.engine.config = replace(api.console.engine.config, trust=TrustConfig("none"))
+    api.console.client = tracking_model()
+    rid = (await api.post("/api/rehearsals", json={"ticket_id": 1003})).json()["id"]
+    await follow(api, rid)
+    assert (await api.get(f"/api/rehearsals/{rid}")).json()["state"] == "ready"
+
+
+async def test_a_waiting_review_sends_a_phone_alert_without_personal_data(api, monkeypatch):
+    sent = []
+
+    async def fake_post(url, content=b"", headers=None):
+        sent.append((url, content.decode(), headers))
+        return httpx.Response(200)
+
+    monkeypatch.setenv("REHEARSAL_NTFY_TOPIC", "rehearsal-test-7f3a9c")
+    monkeypatch.setattr(api.console._http, "post", fake_post)
+    rid = (await api.post("/api/rehearsals", json={"ticket_id": 1002})).json()["id"]  # money: waits for a person
+    await follow(api, rid)
+    assert len(sent) == 1
+    url, text, headers = sent[0]
+    assert url == "https://ntfy.sh/rehearsal-test-7f3a9c" and headers["Title"] == "Rehearsal needs your review"
+    assert "Ticket 1002" in text and "249.00 USD out" in text
+    assert "Daniel" not in text and "test-token" not in text  # no customer names, no approval token
+
+    api.console.client = tracking_model()  # applied by the trust policy: nobody needs to be woken up
+    rid = (await api.post("/api/rehearsals", json={"ticket_id": 1003})).json()["id"]
+    await follow(api, rid)
+    assert len(sent) == 1
+
+
+class SlowModel(ScriptedModel):
+    """Reads a ticket, then thinks for a long time: still running when the pause button is pressed."""
+
+    async def complete(self, messages, tools):
+        if len(messages) > 2:
+            await asyncio.sleep(60)
+        return reply(("get_ticket", {"ticket_id": 1003}))
+
+
+async def test_pause_stops_every_running_agent(api):
+    api.console.client = SlowModel()
+    rid = (await api.post("/api/rehearsals", json={"ticket_id": 1003})).json()["id"]
+    while not api.console.runs[rid].rehearsal.calls:
+        await asyncio.sleep(0.05)
+    r = await api.post("/api/pause", json={"reviewer": "Ops lead"})
+    assert r.status_code == 200 and r.json() == {"stopped": 1}
+    detail = (await api.get(f"/api/rehearsals/{rid}")).json()
+    assert detail["state"] == "rejected" and not detail["running"]
+    entries = (await api.get("/api/audit")).json()["entries"]
+    assert entries[-1]["event"] == "agents_paused" and entries[-1]["by"] == "Ops lead"
+
+
+async def test_tools_reload_after_a_synapse_rebuild(api):
+    r = await api.post("/api/tools/reload", json={})
+    assert r.status_code == 200 and len(r.json()["tools"]) == 10 and r.json()["added"] == []
+    assert (await api.get("/api/audit")).json()["entries"][-1]["event"] == "tools_reloaded"
+    del api.headers[server.TOKEN_HEADER]
+    assert (await api.post("/api/tools/reload", json={})).status_code == 401
+
+
+def test_trust_policy_rejects_unknown_values():
+    with pytest.raises(ValueError):
+        TrustConfig("sometimes")
 
 
 async def test_writes_must_be_json(api):

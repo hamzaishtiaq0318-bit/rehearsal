@@ -19,8 +19,10 @@ import remarkGfm from "remark-gfm";
 
 import type { Change, Decision, RehearsalDetail, Status, TicketDetail } from "../api";
 import { api, errorMessage, hasToken } from "../api";
+import { BlastRadius } from "./BlastRadius";
 import { when } from "./labels";
 import { Logo } from "./Logo";
+import { ActionItem, ReplyPreview, SaidDid } from "./Why";
 import { groupSentence, outcomeText, stepSentence, VERDICT } from "./words";
 
 type StepKind = "read" | "write" | "blocked" | "error";
@@ -63,18 +65,9 @@ function groupChanges(changes: Change[]): [string, Change[]][] {
   return [...groups.entries()];
 }
 
-function TicketCard({ ticketId }: { ticketId: number }) {
-  const [ticket, setTicket] = useState<TicketDetail | null>(null);
+function TicketCard({ ticket }: { ticket: TicketDetail }) {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
-  useEffect(() => {
-    let alive = true;
-    api.ticket(ticketId).then((t) => alive && setTicket(t)).catch(() => undefined);
-    return () => {
-      alive = false;
-    };
-  }, [ticketId]);
-  if (!ticket) return null;
   const first = ticket.messages.find((m) => m.author === "customer");
   const long = (first?.body.length ?? 0) > 220;
   return (
@@ -110,6 +103,7 @@ interface Props {
 
 export function Conversation({ id, status, onChanged }: Props) {
   const [detail, setDetail] = useState<RehearsalDetail | null>(null);
+  const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
   const [agentText, setAgentText] = useState<string | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -155,50 +149,54 @@ export function Conversation({ id, status, onChanged }: Props) {
         .catch((e) => alive && setError(errorMessage(e)));
     refresh();
 
-    const source = new EventSource(api.eventsUrl(id));
-    const seen = new Set<string>();
-    const on = (kind: string, handler: (data: Record<string, unknown>) => void) =>
-      source.addEventListener(kind, (event) => {
-        const message = event as MessageEvent<string>;
-        if (seen.has(message.lastEventId)) return;
-        seen.add(message.lastEventId);
-        handler(JSON.parse(message.data) as Record<string, unknown>);
-      });
-
-    on("tool_call", (d) => {
-      const tool = String(d.tool);
-      const args = typeof d.args === "object" && d.args !== null ? (d.args as Record<string, unknown>) : {};
-      setSteps((s) => [...s, { key: s.length, kind: writesRef.current.has(tool) ? "write" : "read", tool, args,
-        pending: true }]);
-    });
-    on("tool_result", (d) => {
-      const tool = String(d.tool);
-      const ok = Boolean(d.ok);
-      const text = String(d.text ?? "");
-      setSteps((s) => {
-        const index = s.findLastIndex((step) => step.pending && step.tool === tool);
-        if (index < 0) return s;
-        const step = s[index]!;
-        const blocked = !ok && text.startsWith("Blocked");
-        const next = s.slice();
-        next[index] = { ...step, pending: false, kind: blocked ? "blocked" : ok ? step.kind : "error",
-          note: ok ? undefined : text.replace(/^Blocked( before reaching the app)?:\s*/, ""), flagged: Boolean(d.warning) };
-        return next;
-      });
-    });
-    on("agent_finished", (d) => setAgentText(String(d.summary ?? "")));
-    on("error", (d) => setStreamError(String(d.message ?? "Something went wrong.")));
-    on("review", () => refresh());
-    on("done", () => {
-      source.close();
-      refresh();
-      onChangedRef.current();
+    const stop = api.subscribe(id, (kind, d) => {
+      if (kind === "tool_call") {
+        const tool = String(d.tool);
+        const args = typeof d.args === "object" && d.args !== null ? (d.args as Record<string, unknown>) : {};
+        setSteps((s) => [...s, { key: s.length, kind: writesRef.current.has(tool) ? "write" : "read", tool, args,
+          pending: true }]);
+      } else if (kind === "tool_result") {
+        const tool = String(d.tool);
+        const ok = Boolean(d.ok);
+        const text = String(d.text ?? "");
+        setSteps((s) => {
+          const index = s.findLastIndex((step) => step.pending && step.tool === tool);
+          if (index < 0) return s;
+          const step = s[index]!;
+          const blocked = !ok && text.startsWith("Blocked");
+          const next = s.slice();
+          next[index] = { ...step, pending: false, kind: blocked ? "blocked" : ok ? step.kind : "error",
+            note: ok ? undefined : text.replace(/^Blocked( before reaching the app)?:\s*/, ""), flagged: Boolean(d.warning) };
+          return next;
+        });
+      } else if (kind === "agent_finished") {
+        setAgentText(String(d.summary ?? ""));
+      } else if (kind === "error") {
+        setStreamError(String(d.message ?? "Something went wrong."));
+      } else if (kind === "review") {
+        refresh();
+      } else if (kind === "done") {
+        stop();
+        refresh();
+        onChangedRef.current();
+      }
     });
     return () => {
       alive = false;
-      source.close();
+      stop();
     };
   }, [id]);
+
+  const ticketId = detail?.ticket_id ?? null;
+  useEffect(() => {
+    setTicket(null);
+    if (ticketId === null) return;
+    let alive = true;
+    api.ticket(ticketId).then((t) => alive && setTicket(t)).catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [ticketId]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
@@ -238,7 +236,9 @@ export function Conversation({ id, status, onChanged }: Props) {
 
   const Verdict = review ? { high: ShieldAlert, medium: ShieldQuestion, low: ShieldCheck }[review.risk] : null;
   const verdictText = review ? VERDICT[review.risk] : null;
-  const outcome = detail?.outcome ? outcomeText(detail.outcome.state, actions.length) : null;
+  const outcome = detail?.outcome
+    ? outcomeText(detail.outcome.state, actions.length, Boolean(detail.outcome.auto))
+    : null;
   const shownActions = actions.length > 6 && !showChanges ? actions.slice(0, 5) : actions;
 
   return (
@@ -248,7 +248,7 @@ export function Conversation({ id, status, onChanged }: Props) {
           <div className="bubble">
             <p>{detail.request}</p>
           </div>
-          {detail.ticket_id && <TicketCard ticketId={detail.ticket_id} />}
+          {ticket && <TicketCard ticket={ticket} />}
         </div>
       )}
 
@@ -330,18 +330,26 @@ export function Conversation({ id, status, onChanged }: Props) {
                   <p className="agent-text">Here is what I would like to do on the live store:</p>
                   <ul className="action-list">
                     {shownActions.map((a, i) => (
-                      <li key={`${a}-${i}`}>{a}</li>
+                      <ActionItem key={`${a}-${i}`} sentence={a} why={review.explain?.[i]} review={review}
+                        calls={detail?.calls ?? []} />
                     ))}
                     {shownActions.length < actions.length && (
                       <li className="more">and {actions.length - shownActions.length} more</li>
                     )}
                   </ul>
 
+                  <ReplyPreview review={review} />
+
                   <dl className="facts-row">
                     <div><dt>Money out</dt><dd className="num">{review.money_out} USD</dd></div>
                     <div><dt>Customers affected</dt><dd className="num">{owners.size}</dd></div>
                     <div><dt>Rows that change</dt><dd className="num">{review.changes.length}</dd></div>
                   </dl>
+
+                  <SaidDid review={review} />
+
+                  <BlastRadius review={review} homeId={ticket?.customer.id ?? null}
+                    homeLabel={ticket ? ticket.customer.name.split(" ")[0]! : "Request"} />
 
                   {review.flags.length > 0 && (
                     <div className="warnings">
@@ -365,7 +373,12 @@ export function Conversation({ id, status, onChanged }: Props) {
                             {rows.map((c) => (
                               <li key={`${c.table}-${JSON.stringify(c.key)}`}>
                                 <span className="kind" data-kind={c.kind}>{c.kind}</span>
-                                <span>{c.summary}</span>
+                                <span>
+                                  {c.summary}
+                                  {c.caused_by && c.caused_by.length > 0 && (
+                                    <span className="step-ref"> by step {c.caused_by.join(", ")}</span>
+                                  )}
+                                </span>
                               </li>
                             ))}
                           </ul>

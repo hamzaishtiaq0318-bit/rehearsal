@@ -17,6 +17,7 @@ class Flag:
     level: str  # high, medium or low
     title: str
     detail: str
+    rule: str = "effect"  # effect (what would change), source (where targets came from) or say_do
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -51,7 +52,8 @@ def assess(changes: list[RowChange], owners: list[Any], failed_calls: int, block
             flags.append(Flag("high", f"Payment above the {money(cfg.single_payment_limit_cents)} USD approval limit",
                               f"Largest single payment is {money(max(big))} USD."))
 
-    distinct = sorted({o for o in owners if o is not None}, key=str)
+    distinct = sorted({o for o in owners if o is not None},
+                      key=lambda o: (0, o, "") if isinstance(o, int) else (1, 0, str(o)))
     if len(distinct) > 1:
         label = target.owner_table or "owners"
         flags.append(Flag("high", f"Touches {len(distinct)} different {label}",

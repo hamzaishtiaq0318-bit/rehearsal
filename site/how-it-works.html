@@ -13,7 +13,7 @@
   <link rel="manifest" href="/site.webmanifest">
   <link rel="preload" href="/assets/fonts/source-serif-4-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/assets/fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/assets/site.css?v=5">
+  <link rel="stylesheet" href="/assets/site.css?v=7">
   <script src="/assets/site.js?v=1"></script>
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="Rehearsal">
@@ -59,7 +59,8 @@
         <a href="/how-it-works" aria-current="page">How it works</a>
         <a href="/security">Security</a>
         <a href="/docs">Docs</a>
-        <a class="nav-cta" href="https://github.com/hamzaishtiaq0318-bit/rehearsal" rel="noopener">View on GitHub</a>
+        <a class="nav-gh" href="https://github.com/hamzaishtiaq0318-bit/rehearsal" rel="noopener">GitHub</a>
+        <a class="nav-cta" href="/try">Try it</a>
       </nav>
       <button type="button" class="theme-toggle" aria-label="Switch to dark theme"><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.1A8.5 8.5 0 1 1 9.9 3.5a6.6 6.6 0 0 0 10.6 10.6Z"/></svg><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
     </div>
@@ -133,6 +134,8 @@
 
         <h2>2. Review the exact changes</h2>
         <p>When the agent stops, Rehearsal compares the shadow database with the snapshot, row by row and table by table. Each changed row is traced through foreign keys to the customer it belongs to. The reviewer sees plain sentences such as <em>Order 5003: status from delivered to partially refunded</em>, grouped by table, alongside the money involved.</p>
+        <p>Every proposed action has a <strong>Why?</strong> button. Rehearsal notes which rows each tool call changed on the shadow, and where each id the call acted on first appeared: the reviewer's own request, a field in the app's records, or somewhere inside free text. On the demo attack it opens straight onto the sentence in the customer's message that named the order, with the number highlighted.</p>
+        <p>What the agent <em>says</em> is checked too. Its summary and its reply to the customer are compared with the payments actually in the changes. When the words and the data disagree, the console sets them side by side: <em>"Processed the billing corrections"</em> against <em>pay out 3,428.00 USD</em>.</p>
 
         <h3>Risk rules, not guesses</h3>
         <p>Flags come from simple, explainable rules rather than another model:</p>
@@ -145,10 +148,14 @@
             <tbody>
               <tr><td>Touches more than one customer</td><td>High</td><td>A single support task almost always concerns one customer. Twelve is a red flag.</td></tr>
               <tr><td>Payment above the approval limit</td><td>High</td><td>Large refunds or credits need a manager, whatever the agent was told.</td></tr>
+              <tr><td>Acts on records named only inside message text</td><td>High</td><td>Every id an action works on is traced to where the agent first saw it. An order number that only ever appeared inside a customer's message, never in the app's own records, could have been planted by anyone.</td></tr>
+              <tr><td>A summary or reply reports money that is not in the changes</td><td>High</td><td>The agent says it refunded 350 dollars, but no such refund would happen. A chatbot that promises money the business never pays is a real legal risk.</td></tr>
               <tr><td>Deletes records</td><td>High</td><td>Deleted rows cannot be recovered from inside the app.</td></tr>
               <tr><td>Agent read text that looks like a prompt injection</td><td>High</td><td>Llama Prompt Guard 2 scans everything the agent reads. Advisory only.</td></tr>
               <tr><td>Moves money out of the business</td><td>Medium</td><td>Shows the total and the number of payments at a glance.</td></tr>
               <tr><td>Bulk change in one table</td><td>Medium</td><td>Many rows changing in one task deserves a closer look.</td></tr>
+              <tr><td>The summary leaves out the money</td><td>Medium</td><td>The agent's own account of its work is checked against the changes. "Processed the billing corrections" hides twelve refunds.</td></tr>
+              <tr><td>Acts on records it never looked up, or a reply that skips a payment</td><td>Medium</td><td>Guessed ids and customers who are not told about money moving on their account both deserve a look.</td></tr>
               <tr><td>Blocked or failed tool calls</td><td>Medium or low</td><td>Shows the agent tried something that did not fit or did not work.</td></tr>
             </tbody>
           </table>
@@ -158,6 +165,8 @@
         <h2>3. Decide, then verify</h2>
         <p>Approving replays only the recorded writes that succeeded, in order, through the same generated MCP server pointed at the live app. Before replaying, Rehearsal checks that live data has not changed since the snapshot; if it has, it refuses and asks for a fresh rehearsal. After replaying, it diffs live against a snapshot taken just before approval and checks the result matches the rehearsal exactly. If anything differs, or any call fails, live data is restored and the restore itself is verified.</p>
         <p>Rejecting discards the shadow. Undo restores the pre approval snapshot, but only when nobody else has changed live data since, so it can never erase other people's work.</p>
+        <h3>Only interrupt people when it matters</h3>
+        <p>Approving every click wears reviewers out, so Rehearsal has a trust policy. Work that raises no flag at all, such as a reply or a ticket status change for one customer, is applied without asking. It goes through exactly the same verified replay, the audit log records the policy as the decider, and it can be undone. Money, more than one customer, or anything unusual always waits for a person.</p>
 
         <h2>4. Every step is on the record</h2>
         <p>Each rehearsal, tool call and decision is appended to an audit log in which every entry carries the hash of the one before it. Editing or deleting any past entry breaks the chain, and the console shows whether the chain is intact.</p>
@@ -176,6 +185,7 @@
         <a href="/">Home</a>
         <a href="/security">Security</a>
         <a href="/docs">Docs</a>
+        <a href="/try">Try it</a>
         <a href="https://github.com/hamzaishtiaq0318-bit/rehearsal" rel="noopener">GitHub</a>
       </nav>
     </div>
