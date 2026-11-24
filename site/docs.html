@@ -12,7 +12,7 @@
   <link rel="manifest" href="/site.webmanifest">
   <link rel="preload" href="/assets/fonts/inter-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/assets/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/assets/site.css?v=11">
+  <link rel="stylesheet" href="/assets/site.css?v=12">
   <script src="/assets/site.js?v=3"></script>
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="Rehearsal">
@@ -55,8 +55,9 @@
       </a>
       <nav class="site-nav" aria-label="Main">
         <a href="/how-it-works">How it works</a>
-        <a href="/security">Security</a>
-        <a href="/docs" aria-current="page">Docs</a>
+        <a href="/walkthrough">Walkthrough</a>
+        <a class="nav-more" href="/security">Security</a>
+        <a class="nav-more" href="/docs" aria-current="page">Docs</a>
         <a class="nav-gh" href="https://github.com/hamzaishtiaq0318-bit/rehearsal" rel="noopener">GitHub</a>
         <a class="nav-cta" href="/try">Try it</a>
       </nav>
@@ -155,7 +156,7 @@ auto_apply = "low"</code></pre>
         <p>In our runs a free <code>gpt-oss-120b</code> model resolved 12 of 12 tickets correctly and ignored the injected instruction both times.</p>
 
         <h2 id="mcp-proxy">Using your own agent over MCP</h2>
-        <p>Claude Desktop, Cursor and Claude Code can use Rehearsal directly. Put it in your MCP config where the Synapse server used to be. This prints the entry with your paths filled in:</p>
+        <p>Cursor and any other MCP client can use Rehearsal directly. Put it in your MCP config where the Synapse server used to be. This prints the entry with your paths filled in:</p>
         <div class="code">
           <div class="code-bar"><span class="code-label">Terminal</span><button type="button" class="copy"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span class="copy-text">Copy</span><span class="visually-hidden"> code</span></button></div>
           <pre><code>python -m rehearsal.proxy --print-config</code></pre>
@@ -220,6 +221,7 @@ auto_apply = "low"</code></pre>
       <nav aria-label="Footer">
         <a href="/">Home</a>
         <a href="/how-it-works">How it works</a>
+        <a href="/walkthrough">Walkthrough</a>
         <a href="/security">Security</a>
         <a href="/try">Try it</a>
         <a href="https://github.com/hamzaishtiaq0318-bit/rehearsal" rel="noopener">GitHub</a>

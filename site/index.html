@@ -12,7 +12,7 @@
   <link rel="manifest" href="/site.webmanifest">
   <link rel="preload" href="/assets/fonts/inter-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/assets/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/assets/site.css?v=11">
+  <link rel="stylesheet" href="/assets/site.css?v=12">
   <script src="/assets/site.js?v=3"></script>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Rehearsal">
@@ -74,7 +74,7 @@
         "mainEntity": [
           { "@type": "Question", "name": "What is Rehearsal?", "acceptedAnswer": { "@type": "Answer", "text": "A safety layer between an AI agent and an existing app. The agent works on a private copy first, then you see exactly what it wants to change and decide." } },
           { "@type": "Question", "name": "Do I have to change my app?", "acceptedAnswer": { "@type": "Answer", "text": "No. Synapse generates the MCP server from your app's existing code, and Rehearsal starts copies of the app as it is." } },
-          { "@type": "Question", "name": "Can I use my own agent, like Claude Desktop or Cursor?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Put Rehearsal in your MCP config where the Synapse server used to be. Your agent keeps the same tools, every call runs on a private copy, and you approve the changes in the console." } },
+          { "@type": "Question", "name": "Can I use my own agent, like Cursor?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Put Rehearsal in your MCP config where the Synapse server used to be. Your agent keeps the same tools, every call runs on a private copy, and you approve the changes in the console." } },
           { "@type": "Question", "name": "How does it decide what is risky?", "acceptedAnswer": { "@type": "Answer", "text": "With plain rules you can read: money leaving the business, more than one customer touched in a single task, large or bulk changes, deletions, blocked tool calls, ids found only inside message text, replies that leak other customers' data, and an agent whose words do not match its changes." } },
           { "@type": "Question", "name": "Do I have to approve every single change?", "acceptedAnswer": { "@type": "Answer", "text": "No. Work that raises no flag at all, such as a reply or a status change for one customer, is applied by the trust policy without asking. It is still verified and can be undone. Money, more than one customer or anything unusual always waits for a person." } },
           { "@type": "Question", "name": "Does it cost anything?", "acceptedAnswer": { "@type": "Answer", "text": "No. It runs on your own machine with free AI models from Groq, OpenRouter and Gemini." } }
@@ -94,8 +94,9 @@
       </a>
       <nav class="site-nav" aria-label="Main">
         <a href="/how-it-works">How it works</a>
-        <a href="/security">Security</a>
-        <a href="/docs">Docs</a>
+        <a href="/walkthrough">Walkthrough</a>
+        <a class="nav-more" href="/security">Security</a>
+        <a class="nav-more" href="/docs">Docs</a>
         <a class="nav-gh" href="https://github.com/hamzaishtiaq0318-bit/rehearsal" rel="noopener">GitHub</a>
         <a class="nav-cta" href="/try">Try it</a>
       </nav>
@@ -105,6 +106,7 @@
 
   <main id="main">
     <section class="hero">
+      <div class="hero-light" aria-hidden="true"></div>
       <div class="wrap">
         <p class="pill"><b>Track 4</b> <span>Built on Synapse MCP<span class="pill-extra"> for the Vibe-a-thon</span></span></p>
         <h1>Every agent action gets a dress rehearsal.</h1>
@@ -165,7 +167,7 @@
             <span class="film-len" aria-hidden="true">0:48</span>
           </button>
         </figure>
-        <p class="film-note">Sound on. English captions are in the player. Want the whole thing? <a href="/assets/film/walkthrough.mp4">Watch the 2 minute walkthrough of the real console</a>: a free model at work, the attack caught, a real Synapse rebuild and the audit log.</p>
+        <p class="film-note">Sound on. English captions are in the player. Want the whole thing? <a href="/walkthrough">Watch the 2 minute walkthrough of the real console</a>: a free model at work, the attack caught, a real Synapse rebuild and the audit log.</p>
       </div>
     </section>
 
@@ -309,7 +311,7 @@ python -m rehearsal.server</code></pre>
         <div class="faq">
           <details><summary>What is Rehearsal?</summary><p>A safety layer between an AI agent and an existing app. The agent works on a private copy first. Then you see exactly what it wants to change, in plain words, and you decide.</p></details>
           <details><summary>Do I have to change my app?</summary><p>No. Synapse generates the MCP server from your app's existing code, and Rehearsal starts copies of the app exactly as it is. The demo store's code was never touched.</p></details>
-          <details><summary>Can I use my own agent, like Claude Desktop or Cursor?</summary><p>Yes. Put Rehearsal in your MCP config where the Synapse server used to be. Your agent keeps the same tools, every call runs on a private copy, and the console opens in your browser so you can approve the changes. The agent never gets the power to approve its own work.</p></details>
+          <details><summary>Can I use my own agent, like Cursor?</summary><p>Yes. Put Rehearsal in your MCP config where the Synapse server used to be. Your agent keeps the same tools, every call runs on a private copy, and the console opens in your browser so you can approve the changes. The agent never gets the power to approve its own work.</p></details>
           <details><summary>How does it decide what is risky?</summary><p>With plain rules you can read. Money leaving the business, more than one customer touched in a single task, a payment above the approval limit, bulk changes, deletions and blocked tool calls. It also checks where each target came from, whether a reply carries other customers' data, and whether what the agent says matches what it did. No second AI is guessing.</p></details>
           <details><summary>Do I have to approve every single change?</summary><p>No. Work that raises no flag at all, such as a reply or a status change for one customer, is applied by the trust policy without asking. It is still verified and can be undone. Money, more than one customer or anything unusual always waits for a person.</p></details>
           <details><summary>What if the live data changes while I am reviewing?</summary><p>Rehearsal notices and holds off, so it never applies changes that no longer fit. It asks you to rehearse again instead.</p></details>
@@ -344,6 +346,7 @@ python -m rehearsal.server</code></pre>
       </div>
       <nav aria-label="Footer">
         <a href="/how-it-works">How it works</a>
+        <a href="/walkthrough">Walkthrough</a>
         <a href="/security">Security</a>
         <a href="/docs">Docs</a>
         <a href="/try">Try it</a>

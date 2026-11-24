@@ -20,7 +20,7 @@ Built on [Synapse](https://www.npmjs.com/package/@2ndbrainlabs-ai/synapse-cli) f
 
 **Judge it in three minutes.**
 
-1. **[Watch the 48 second film](https://rehearsal-ai-app.web.app/#film)**, then read [the problem](#the-problem). It takes 30 seconds. For the whole cycle on the real console, including a live Synapse rebuild, watch the **[2 minute walkthrough](https://rehearsal-ai-app.web.app/assets/film/walkthrough.mp4)**.
+1. **[Watch the 48 second film](https://rehearsal-ai-app.web.app/#film)**, then read [the problem](#the-problem). It takes 30 seconds. For the whole cycle on the real console, including a live Synapse rebuild, watch the **[2 minute walkthrough](https://rehearsal-ai-app.web.app/walkthrough)**.
 2. **[Try it in your browser](https://rehearsal-ai-app.web.app/try)**, no install. Pick "Watch Rehearsal catch an attack": twelve refunds, 3,428 USD, flagged before anything reached the live store. Every run there is a real engine run, captured and replayed in the real console.
 3. Read [why Synapse is at the core](#why-synapse-is-at-the-core). The only way Rehearsal touches the app is through the server Synapse generated.
 
@@ -112,7 +112,7 @@ The agent walks a chain of 13 free models across Groq, OpenRouter and Gemini. A 
 
 ### 2. MCP proxy mode, with your own agent
 
-Put Rehearsal in your MCP client's config where the Synapse server used to be. Claude Desktop, Cursor or Claude Code then gets the same ten tools, plus `submit_for_review` and `review_status`. Every call runs on a rehearsal copy, and nothing reaches live data until a person approves the exact changes in the console, which opens in their browser.
+Put Rehearsal in your MCP client's config where the Synapse server used to be. Cursor or any other MCP client then gets the same ten tools, plus `submit_for_review` and `review_status`. Every call runs on a rehearsal copy, and nothing reaches live data until a person approves the exact changes in the console, which opens in their browser.
 
 ```bash
 python -m rehearsal.proxy --print-config
@@ -132,7 +132,7 @@ prints the snippet to paste, with your paths filled in:
 }
 ```
 
-In Claude Desktop this goes under Settings, Developer, Edit Config. In Cursor it goes under Settings, MCP. Restart the client afterwards. The agent never receives the approval token: the link that can approve is opened in your browser, never returned to the agent.
+In Cursor it goes under Settings, MCP; other clients have their own MCP config file. Restart the client afterwards. The agent never receives the approval token: the link that can approve is opened in your browser, never returned to the agent.
 
 ## Results
 

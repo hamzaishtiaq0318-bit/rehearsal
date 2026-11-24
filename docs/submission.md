@@ -6,7 +6,7 @@
 - Try it in the browser, no install: https://rehearsal-ai-app.web.app/try
 - Repository: https://github.com/hamzaishtiaq0318-bit/rehearsal
 - 48 second film: https://rehearsal-ai-app.web.app/#film
-- 2 minute walkthrough of the real console (a free model, the attack, a real Synapse rebuild): https://rehearsal-ai-app.web.app/assets/film/walkthrough.mp4
+- 2 minute walkthrough of the real console (a free model, the attack, a real Synapse rebuild): https://rehearsal-ai-app.web.app/walkthrough
 
 ## The problem
 
@@ -27,7 +27,7 @@ Work that raises no flag at all, such as a reply on one ticket, is applied by a 
 - One generated server, launched twice: once against the private copy, once against live. It reads `ENDPOINT_BASE_URL` on every call, which is what makes a rehearsal possible.
 - Rehearsal reads which tools write from the generated code itself. After `synapse build --discover`, it loads the new build and refuses any approval rehearsed with the old one.
 - `rehearsal init` writes the whole config for any Synapse built app. A second, unrelated app (a physio clinic) is protected with no Rehearsal code that knows about it.
-- It works with your own agent too: put Rehearsal where the Synapse server was in Claude Desktop, Cursor or Claude Code.
+- It works with your own agent too: put Rehearsal where the Synapse server was in Cursor or any other MCP client.
 
 ## Results
 

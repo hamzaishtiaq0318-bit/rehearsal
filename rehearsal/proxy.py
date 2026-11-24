@@ -1,4 +1,4 @@
-"""Rehearsal as an MCP server, for any MCP client: Claude Desktop, Cursor or Claude Code.
+"""Rehearsal as an MCP server, for any MCP client, such as Cursor.
 
 Put Rehearsal in your MCP config where the Synapse server used to be. The agent gets the same tools,
 but every call runs on a rehearsal copy of the app, and nothing reaches live data until a person
@@ -271,7 +271,7 @@ async def serve(open_review: Callable[[str], Any] = webbrowser.open) -> None:
 
 
 def main() -> None:
-    if "--print-config" in sys.argv:  # the snippet to paste into Claude Desktop, Cursor or another client
+    if "--print-config" in sys.argv:  # the snippet to paste into Cursor or another MCP client
         entry = {"command": sys.executable, "args": ["-m", "rehearsal.proxy"],
                  "env": {"PYTHONPATH": str(config_mod.ROOT)}}
         if os.environ.get("REHEARSAL_CONFIG"):  # protecting another app: the client must start it on that config

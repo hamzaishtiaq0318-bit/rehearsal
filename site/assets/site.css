@@ -59,6 +59,7 @@
   --high-bg: #2b1311;
   --mark-bg: #3d1a16; /* highlighted attack text: red, because it is the risk */
   --grid-line: rgb(255 255 255 / 0.045);
+  --grid-lit: rgb(255 255 255 / 0.11);
   --glow: rgb(255 255 255 / 0.07);
   --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-lg: 0 30px 80px rgb(0 0 0 / 0.6);
@@ -97,6 +98,7 @@
   --high-bg: #fdeceb;
   --mark-bg: #fbdcd8;
   --grid-line: rgb(0 0 0 / 0.05);
+  --grid-lit: rgb(0 0 0 / 0.1);
   --glow: rgb(0 0 0 / 0.04);
   --shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 4px 16px rgb(0 0 0 / 0.05);
   --shadow-lg: 0 2px 6px rgb(0 0 0 / 0.05), 0 30px 70px rgb(0 0 0 / 0.14);
@@ -364,7 +366,7 @@ pre,
   display: block;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 860px) {
   .theme-toggle {
     order: 2;
   }
@@ -388,6 +390,13 @@ pre,
 @media (max-width: 400px) {
   .site-nav a {
     padding: 0 7px;
+  }
+}
+
+/* phones: Security and Docs stay in the footer so the bar keeps one row */
+@media (max-width: 480px) {
+  .site-nav .nav-more {
+    display: none;
   }
 }
 
@@ -553,6 +562,32 @@ pre,
   height: 70%;
   z-index: -1;
   background: radial-gradient(50% 50% at 50% 50%, var(--glow), transparent 70%);
+}
+
+/* a stage light drifting over the grid: it brightens only the lines it passes, like a lamp crossing a stage floor */
+.hero-light {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--grid-lit) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-lit) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(closest-side, #000, transparent);
+  mask-size: 720px 460px;
+  mask-repeat: no-repeat;
+  mask-position: 10% 0%;
+  animation: stage-light 24s ease-in-out infinite alternate;
+}
+
+@keyframes stage-light {
+  50% {
+    mask-position: 62% 22%;
+  }
+  100% {
+    mask-position: 92% 2%;
+  }
 }
 
 .hero h1 {
@@ -1495,5 +1530,8 @@ table.compare tr.ours td {
   *::after {
     transition-duration: 1ms !important;
     animation-duration: 1ms !important;
+  }
+  .hero-light {
+    animation: none;
   }
 }

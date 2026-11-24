@@ -57,7 +57,7 @@ Without editing the generated file, Rehearsal:
 
 ## Using the server from an MCP client
 
-Claude Desktop (Settings, Developer, Edit Config) or Cursor (Settings, MCP):
+Cursor (Settings, MCP) or any other MCP client's config:
 
 ```json
 {

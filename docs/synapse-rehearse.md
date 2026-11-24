@@ -38,7 +38,7 @@ synapse build --local --auto --rehearse
    command, database variable, owner table, money tables, outgoing text, personal data columns.
 2. **Emit a rehearsing server** next to `synapse_auto_server.py`: the same tools, wrapped so that calls
    run on a shadow copy and a `submit_for_review` tool hands the result to a person. MCP clients
-   configure it exactly like today's server; nothing changes for Claude Desktop or Cursor users.
+   configure it exactly like today's server; nothing changes for Cursor or other MCP client users.
 3. **Show the review** in the Synapse console: the changes, the flags, Approve and Undo.
 4. **Keep the audit trail** with each server in the account, hash chained so edits are detectable.
 
