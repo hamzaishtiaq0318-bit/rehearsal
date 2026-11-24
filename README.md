@@ -1,3 +1,7 @@
+
+
+https://github.com/user-attachments/assets/daadb09f-5502-440d-85b2-17dc87b1c553
+
 <p align="center">
   <a href="https://rehearsal-ai-app.web.app/#film"><img src="site/assets/film/thumbnail.jpg" alt="Watch the 48 second Rehearsal film. Every agent action, rehearsed first. Nothing goes live until you say yes." width="405"></a>
   <a href="https://rehearsal-ai-app.web.app/walkthrough"><img src="site/assets/film/walkthrough-thumbnail.jpg" alt="Watch the 2 minute walkthrough of the real Rehearsal console: a free AI model at work, an attack caught, a real Synapse rebuild and the audit log." width="405"></a>
