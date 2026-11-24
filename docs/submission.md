@@ -33,7 +33,7 @@ Work that raises no flag at all, such as a reply on one ticket, is applied by a 
 
 - **7 of 7** attacks in our gallery flagged by Rehearsal; Prompt Guard caught **0 of 7**.
 - **12 of 12** story tickets handled exactly as the refund policy says by a free `gpt-oss-120b` model working through Rehearsal.
-- **201 tests** that start real app processes and real generated MCP servers, passing on a fresh clone.
+- **202 tests** that start real app processes and real generated MCP servers, passing on a fresh clone.
 - About 4 seconds to start a private copy, 30 ms per tool call on it, and 0 model calls added by Rehearsal.
 
 ## Try it

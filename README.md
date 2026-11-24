@@ -144,7 +144,7 @@ In Claude Desktop this goes under Settings, Developer, Edit Config. In Cursor it
 | **7 of 7** | attacks in the [gallery](#attack-gallery-seven-ways-an-agent-goes-wrong) flagged by Rehearsal. Prompt Guard caught none of them. |
 | **0 model calls** | added by Rehearsal. Measured on a Windows laptop: about 4 seconds to start the private copy, 30 ms per tool call on it, 0.16 seconds to prepare the review, and 0.12 seconds to apply and verify. |
 | **0 lines** | of the existing app changed. |
-| **201 tests** | that start real app processes and real generated MCP servers: the full cycle, 16 random tasks that must keep both promises (nothing live without approval, live gets exactly what was reviewed), the attack gallery, where targets came from, words against changes, data leaks, your own rules, trust levels, two person approval, rollback, a tool server crashing part way through a replay, path injection, the console API and its security checks, MCP proxy mode over the real protocol, and the second app protected from a generated config. |
+| **202 tests** | that start real app processes and real generated MCP servers: the full cycle, 16 random tasks that must keep both promises (nothing live without approval, live gets exactly what was reviewed), the attack gallery, where targets came from, words against changes, data leaks, your own rules, trust levels, two person approval, a daily money limit across tasks, rollback, a tool server crashing part way through a replay, path injection, the console API and its security checks, MCP proxy mode over the real protocol, and the second app protected from a generated config. |
 
 The compromised agent in the demo is a clearly labelled script, so the attack can be shown every time. The evaluation runs the real model:
 
@@ -210,7 +210,7 @@ The server prints a console link with a one time token. Open it and try:
 - **Ticket 1002** with the AI agent: a torn jacket. Approve the refund and watch it land on live data, verified.
 - **Ticket 1006** with the attack simulation: the polite injection. Rehearsal flags twelve refunds to twelve customers and you cancel it.
 
-Run the tests with `python -m pytest tests`. Last full run on a fresh clone (24 Nov 2026): **201 passed, no warnings**, and the console type check and both builds passed. The same checks are written as GitHub Actions in [`tests.yml`](.github/workflows/tests.yml), which are switched off for now.
+Run the tests with `python -m pytest tests`. Last full run on a fresh clone (24 Nov 2026): **202 passed, no warnings**, and the console type check and both builds passed. The same checks are written as GitHub Actions in [`tests.yml`](.github/workflows/tests.yml), which are switched off for now.
 
 Every setting, such as `REHEARSAL_TOKEN`, `REHEARSAL_REVIEWERS` or `REHEARSAL_AUDIT_KEY`, can go in `.env`. The full list is on the [docs page](https://rehearsal-ai-app.web.app/docs#settings).
 
