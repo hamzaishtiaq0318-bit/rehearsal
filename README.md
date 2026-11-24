@@ -1,7 +1,10 @@
 <p align="center">
-  <a href="https://rehearsal-ai-app.web.app/#film"><img src="site/assets/film/thumbnail.jpg" alt="Watch the 48 second Rehearsal film. Every agent action, rehearsed first. Nothing goes live until you say yes." width="820"></a>
+  <a href="https://rehearsal-ai-app.web.app/#film"><img src="site/assets/film/thumbnail.jpg" alt="Watch the 48 second Rehearsal film. Every agent action, rehearsed first. Nothing goes live until you say yes." width="405"></a>
+  <a href="https://rehearsal-ai-app.web.app/walkthrough"><img src="site/assets/film/walkthrough-thumbnail.jpg" alt="Watch the 2 minute walkthrough of the real Rehearsal console: a free AI model at work, an attack caught, a real Synapse rebuild and the audit log." width="405"></a>
   <br>
   <a href="https://rehearsal-ai-app.web.app/#film"><b>Watch the 48 second film</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://rehearsal-ai-app.web.app/walkthrough"><b>Watch the 2 minute walkthrough</b></a>
 </p>
 
 # Rehearsal
