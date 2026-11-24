@@ -284,7 +284,7 @@ Then build the app's MCP server with Synapse in the app's folder and start Rehea
 | [Security](https://rehearsal-ai-app.web.app/security) | The threat model, how each threat is handled and tested, and the limits we know about |
 | [Docs](https://rehearsal-ai-app.web.app/docs) | Quickstart, building the MCP server with Synapse, protecting your own app, MCP proxy mode, models and tests, with a copy button on every command |
 
-It is plain HTML and CSS with one small script for the theme switch and the copy buttons. It has light and dark themes, works from phone to desktop, loads no third party code and has no tracking. It is served from Firebase Hosting with a strict content security policy, and its source is in [`site/`](site/).
+It is plain HTML and CSS with one small script for the theme switch and the copy buttons. It has light and dark themes, works from phone to desktop, loads no third party code and has no tracking. It is served from Firebase Hosting with a strict content security policy, and its source is in [`site/`](site/). Lighthouse on 24 Nov 2026: 99 performance, 100 accessibility, 100 best practices and 100 SEO for the home page; 95, 100, 100 and 100 for the browser demo.
 
 ![The Rehearsal chat console: ask in plain words, and the agent works on a private copy](site/assets/img/console-new.webp)
 
