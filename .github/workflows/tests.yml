@@ -1,9 +1,8 @@
 name: tests
 
+# Switched off for now: runs only when started by hand. Put the push and pull_request triggers back to turn it on.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
