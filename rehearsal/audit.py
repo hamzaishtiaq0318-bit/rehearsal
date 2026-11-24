@@ -111,14 +111,16 @@ def summarize(entries: list[dict], key: bytes | None = None) -> dict:
 
 
 def paid_today(entries: list[dict], day: str) -> dict[str, int]:
-    """Money applied to live on a day (YYYY-MM-DD, UTC), per owner, from the audit log, leaving out work that
-    was undone. A daily limit counts against this, and because it comes from the log it survives a restart."""
+    """Money that reached live on a day (YYYY-MM-DD, UTC), per owner, from the audit log. A daily limit counts
+    against this, and because it comes from the log it survives a restart. It errs towards counting: work is left
+    out only after an undo that was confirmed, and a rollback that could not be confirmed still counts."""
     applied: dict[str, dict] = {}
     undone: set[str] = set()
     for e in entries:
-        if e.get("event") == "rehearsal_applied" and str(e.get("at", "")).startswith(day):
+        today = str(e.get("at", "")).startswith(day)
+        if e.get("event") in ("rehearsal_applied", "rollback_unverified") and today:
             applied[e.get("rehearsal")] = e.get("paid") or {}
-        elif e.get("event") == "rehearsal_undone":
+        elif e.get("event") == "rehearsal_undone" and e.get("verified") is True:
             undone.add(e.get("rehearsal"))
     totals: dict[str, int] = {}
     for rid, paid in applied.items():

@@ -9,6 +9,7 @@ import pytest
 
 from rehearsal import server
 from rehearsal.config import TrustConfig
+from rehearsal.engine import Engine
 from rehearsal.llm import LLMError, Reply, ToolCall
 
 pytestmark = pytest.mark.anyio
@@ -342,6 +343,31 @@ async def test_decision_input_is_validated(api):
     assert (await api.post("/api/rehearsals/nope/approve", json={})).status_code == 404
 
 
+async def test_a_conversation_waiting_before_a_restart_is_still_in_the_console(api):
+    rid = (await api.post("/api/rehearsals", json={"ticket_id": 1002})).json()["id"]
+    before = await follow(api, rid)
+    engine = api.console.engine
+    await engine.close()
+    again = await Engine(engine.config).start()
+    console = server.Console(again, None)
+    app = server.create_app(console, token="test-token", allowed_hosts=["test"], public_demo=False)
+    try:
+        async with app.router.lifespan_context(app):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test",
+                                         headers={server.TOKEN_HEADER: "test-token"}) as client:
+                listed = (await client.get("/api/rehearsals")).json()
+                assert [(c["id"], c["title"], c["state"]) for c in listed] == [
+                    (rid, "Ticket 1002: Jacket arrived with a torn sleeve", "ready")]
+                after = await follow(client, rid)  # the steps are rebuilt from what was recorded
+                assert after.count("tool_call") == before.count("tool_call") and after[-2:] == ["review", "done"]
+                detail = (await client.post(f"/api/rehearsals/{rid}/approve", json={"reviewer": "Amira"})).json()
+                assert detail["state"] == "applied" and detail["outcome"]["verified"]
+                assert detail["request"] == "Please resolve ticket 1002."
+    finally:
+        await console.aclose()
+        await again.close()
+
+
 async def test_concurrency_cap(api):
     api.console.max_active = 0
     assert (await api.post("/api/rehearsals", json={"ticket_id": 1002})).status_code == 429
@@ -392,6 +418,7 @@ async def test_reset_restores_fresh_demo_data(api):
     assert (await api.post("/api/reset", json={})).status_code == 200
     assert (await api.get("/api/tickets/1002")).json()["status"] == "open"
     assert (await api.get("/api/rehearsals")).json() == []
+    assert not any(api.console.engine.sessions_dir.iterdir())  # nothing from before the reset returns on restart
 
 
 async def test_writes_need_the_launch_token(api):

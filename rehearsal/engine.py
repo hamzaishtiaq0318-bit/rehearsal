@@ -7,6 +7,7 @@ replays the recorded writes on the live app, then checks live changed exactly as
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -104,15 +105,21 @@ class Engine:
 
     async def start(self) -> "Engine":
         self._logs.mkdir(parents=True, exist_ok=True)
-        if self.sessions_dir.exists():
-            shutil.rmtree(self.sessions_dir, ignore_errors=True)  # shadows from a previous run are stale
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
         seed_database(self.target, self.target.live_database)
+        # Reviews still waiting, and applied work that can still be undone, survive a restart. Every other
+        # session folder (shadows that were still running, work already decided) is stale and goes.
+        for folder in sorted(self.sessions_dir.iterdir()):
+            restored = Rehearsal.restore(self, folder) if folder.is_dir() else None
+            if restored:
+                self.rehearsals[restored.id] = restored
+            else:
+                shutil.rmtree(folder, ignore_errors=True)
         self.live_app = await AppProcess(self.target, self.target.live_database, port=self.target.live_port,
                                          log_path=self._logs / "live-app.log").start()
         await self.reload_tools()
         self.audit.write("engine_started", target=self.target.name, server=self.server_file.name,
-                         tools=sorted(self.tools))
+                         tools=sorted(self.tools), restored=sorted(self.rehearsals))
         return self
 
     async def reload_tools(self) -> list[str]:
@@ -169,10 +176,6 @@ class Rehearsal:
         self.review: Review | None = None
         self.outcome: Outcome | None = None
         self.dir = engine.sessions_dir / self.id
-        self.base_db = self.dir / "base.db"  # live, frozen at the start of the rehearsal
-        self.shadow_db = self.dir / "shadow.db"  # what the agent actually changed
-        self.pre_apply_db = self.dir / "pre_apply.db"
-        self.post_apply_db = self.dir / "post_apply.db"
         self._app: AppProcess | None = None
         self._server: ToolServer | None = None
         self._server_file = engine.server_file
@@ -181,7 +184,78 @@ class Rehearsal:
         self.sources: dict[int, list[Source]] = {}  # write call -> where each id it acts on came from
         self.owner_names: dict[Any, str] = {}  # owner id -> a readable name, for the reviewer
         self.approvals: list[str] = []  # who has approved so far, when high risk needs two people
+        self.meta: dict[str, Any] = {}  # how the console shows it (title, request, mode), kept across a restart
         self._rows: dict[tuple, Any] = {}
+
+    @property
+    def base_db(self) -> Path:
+        return self.dir / "base.db"  # live, frozen at the start of the rehearsal
+
+    @property
+    def shadow_db(self) -> Path:
+        return self.dir / "shadow.db"  # what the agent actually changed
+
+    @property
+    def pre_apply_db(self) -> Path:
+        return self.dir / "pre_apply.db"
+
+    @property
+    def post_apply_db(self) -> Path:
+        return self.dir / "post_apply.db"
+
+    # ------------------------------------------------------------ surviving a restart
+
+    def save(self) -> None:
+        """Write what a restart needs into the session folder. The changed rows are not stored: they are
+        worked out again from the two database copies, so they cannot drift from what is on disk."""
+        if self.review is None:
+            return
+        data = {
+            "id": self.id, "task": self.task, "actor": self.actor, "created_at": self.created_at,
+            "state": str(self.state), "summary": self.summary, "approvals": self.approvals, "meta": self.meta,
+            "server_file": self._server_file.name if self._server_file else None,
+            "calls": [c.to_dict() for c in self.calls],
+            "flags": [f.to_dict() for f in self.review.flags], "risk": self.review.risk,
+            "money_out_cents": self.review.money_out_cents,
+            "outcome": asdict(self.outcome) if self.outcome else None,
+            "sources": {str(i): [src.to_dict() for src in ss] for i, ss in self.sources.items()},
+            "causes": [[table, [list(kv) for kv in key], calls] for (table, key), calls in self.causes.items()],
+            "owner_names": [[owner, name] for owner, name in self.owner_names.items()],
+        }
+        tmp = self.dir / "state.json.tmp"
+        tmp.write_text(json.dumps(data, default=str), encoding="utf-8")
+        tmp.replace(self.dir / "state.json")  # a crash part way through a write leaves the last good state
+
+    @classmethod
+    def restore(cls, engine: "Engine", folder: Path) -> "Rehearsal | None":
+        """A rehearsal from before a restart: one waiting for a decision, or applied work that can still be
+        undone. Anything else, or anything unreadable, gives None."""
+        try:
+            data = json.loads((folder / "state.json").read_text(encoding="utf-8"))
+            state = State(data["state"])
+            r = cls(engine, data["task"], data["actor"])
+            r.id, r.dir = data["id"], folder
+            if state not in (State.READY, State.APPLIED) or not (r.base_db.exists() and r.shadow_db.exists()):
+                return None
+            target = engine.target
+            if state == State.APPLIED and (not r.pre_apply_db.exists() or not r.post_apply_db.exists() or meaningful(
+                    diff_databases(r.post_apply_db, target.live_database), target.volatile_columns)):
+                return None  # live moved on since it was applied, so it can no longer be undone
+            r.state, r.created_at, r.summary = state, data["created_at"], data["summary"]
+            r.approvals, r.meta = list(data["approvals"]), dict(data["meta"])
+            r._server_file = target.app_dir / data["server_file"] if data["server_file"] else None
+            r.calls = [RecordedCall(**c) for c in data["calls"]]
+            changes, owners = r._changes_and_owners()
+            r.review = Review(changes, owners, [Flag(**f) for f in data["flags"]], data["risk"],
+                              int(data["money_out_cents"]))
+            o = data["outcome"]
+            r.outcome = Outcome(State(o["state"]), o["message"], o["verified"], o["auto"]) if o else None
+            r.sources = {int(i): [Source(**src) for src in ss] for i, ss in data["sources"].items()}
+            r.causes = {(table, tuple(tuple(kv) for kv in key)): calls for table, key, calls in data["causes"]}
+            r.owner_names = {owner: name for owner, name in data["owner_names"]}
+            return r
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
 
     # ------------------------------------------------------------ rehearsing
 
@@ -266,14 +340,7 @@ class Rehearsal:
         self.summary = summary
         await self._stop_shadow()
         target, cfg = self.engine.target, self.engine.config.risk
-        changes = meaningful(diff_databases(self.base_db, self.shadow_db), target.volatile_columns)
-        after, before = OwnerResolver(self.shadow_db, target.owner_table), OwnerResolver(self.base_db, target.owner_table)
-        try:
-            owners = [(before if c.kind == "removed" else after).owner_of(c.table, c.after or c.before)
-                      for c in changes]
-        finally:
-            after.close()
-            before.close()
+        changes, owners = self._changes_and_owners()
         distinct = list(dict.fromkeys(o for o in owners if o is not None))
         self.owner_names = display_names(self.shadow_db, target.owner_table, distinct)
         failed = sum(1 for c in self.calls if not c.ok and not c.blocked)
@@ -295,7 +362,21 @@ class Rehearsal:
         self.engine.audit.write("review_ready", rehearsal=self.id, rows_changed=len(changes),
                                 risk=self.review.risk, flags=[f.title for f in flags],
                                 money_out_cents=self.review.money_out_cents)
+        self.save()
         return self.review
+
+    def _changes_and_owners(self) -> tuple[list[RowChange], list[Any]]:
+        """Every meaningful row change between the frozen copy and the agent's copy, and who owns each row."""
+        target = self.engine.target
+        changes = meaningful(diff_databases(self.base_db, self.shadow_db), target.volatile_columns)
+        after, before = OwnerResolver(self.shadow_db, target.owner_table), OwnerResolver(self.base_db, target.owner_table)
+        try:
+            owners = [(before if c.kind == "removed" else after).owner_of(c.table, c.after or c.before)
+                      for c in changes]
+        finally:
+            after.close()
+            before.close()
+        return changes, owners
 
     # ------------------------------------------------------------ decisions
 
@@ -319,6 +400,7 @@ class Rehearsal:
                 raise InvalidState("High risk changes need a second person. The second approval must come from "
                                    "someone else.")
             self.approvals.append(by)
+            self.save()
             if len(self.approvals) < 2:
                 self.engine.audit.write("first_approval", rehearsal=self.id, by=by)
                 return Outcome(State.READY, f"Approved by {by}. A second person must approve before anything is "
@@ -379,7 +461,9 @@ class Rehearsal:
             self.engine.audit.write("rollback_verified", rehearsal=self.id)
             return "Live data was restored and checked against the snapshot taken before approval."
         kept = self._keep_snapshot()
-        self.engine.audit.write("rollback_unverified", rehearsal=self.id, snapshot=str(kept))
+        # Some of the payouts may still be live, so a daily limit counts all of them until a person checks.
+        self.engine.audit.write("rollback_unverified", rehearsal=self.id, snapshot=str(kept),
+                                paid=paid_by_owner(self.review.changes, self.review.owners, self.engine.target))
         return f"Live data could not be confirmed as restored. Check it now; the pre approval snapshot is kept at {kept}."
 
     async def _restore_verified(self, snapshot: Path) -> bool:
@@ -428,4 +512,5 @@ class Rehearsal:
         # auto is recorded as its own field: the overview counts it, never the decider's name.
         self.engine.audit.write(f"rehearsal_{state}", rehearsal=self.id, by=by, message=message, verified=verified,
                                 auto=auto, **extra)
+        self.save()
         return self.outcome

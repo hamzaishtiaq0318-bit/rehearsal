@@ -9,6 +9,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import tempfile
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
@@ -73,6 +74,29 @@ class Run:
     done: bool = False
     task: asyncio.Task | None = None
     _changed: asyncio.Event = field(default_factory=asyncio.Event)
+
+    def __post_init__(self) -> None:
+        if self.rehearsal is not None:  # kept with the rehearsal, so the conversation survives a restart
+            self.rehearsal.meta = {"mode": self.mode, "model": self.model, "title": self.title,
+                                   "request": self.request, "ticket_id": self.ticket_id}
+
+    @classmethod
+    def restored(cls, rehearsal: Rehearsal) -> "Run":
+        """The conversation of a rehearsal from before a restart, rebuilt from the calls it recorded."""
+        m = rehearsal.meta
+        run = cls(rehearsal, m.get("mode", "external"), m.get("model", rehearsal.actor),
+                  m.get("title", rehearsal.task[:80]), m.get("request", rehearsal.task), m.get("ticket_id"))
+        run.emit("started", {"task": rehearsal.task, "request": run.request, "mode": run.mode, "model": run.model})
+        for c in rehearsal.calls:
+            run.emit("tool_call", {"tool": c.tool, "args": c.args})
+            run.emit("tool_result", {"index": c.index, "tool": c.tool, "ok": c.ok, "text": c.result[:1500],
+                                     "warning": None})
+        run.emit("agent_finished", {"summary": rehearsal.summary, "finished": True, "models": [run.model],
+                                    "steps": len(rehearsal.calls), "error": None})
+        run.emit("review", rehearsal_dict(rehearsal))
+        run.done = True
+        run.emit("done", {"state": str(rehearsal.state)})
+        return run
 
     def emit(self, kind: str, data: dict) -> None:
         self.events.append({"id": len(self.events), "kind": kind, "data": data})
@@ -178,6 +202,9 @@ class Console:
         self.public_demo = public_demo
         self.max_active = int(os.environ.get("REHEARSAL_MAX_ACTIVE", "3"))
         self.runs: dict[str, Run] = {}
+        # reviews from before a restart come back as conversations, oldest first
+        for r in sorted(engine.rehearsals.values(), key=lambda r: r.created_at):
+            self.runs[r.id] = Run.restored(r)
         self._starting = 0  # rehearsals between the capacity check and their run being listed
         # Scripted agents that act out an attack, by ticket: (name of the attack, label shown, agent factory).
         self.simulations: dict[int, tuple[str, str, Callable[[], Any]]] = {
@@ -358,6 +385,8 @@ class Console:
             fresh = Path(tmp) / "fresh.db"
             await asyncio.to_thread(seed_database, target, fresh)
             await asyncio.to_thread(restore_database, fresh, target.live_database)
+        for r in self.engine.rehearsals.values():  # so nothing from before the reset comes back after a restart
+            shutil.rmtree(r.dir, ignore_errors=True)
         self.runs.clear()
         self.engine.rehearsals.clear()
         self.engine.audit.write("demo_reset", by="console")

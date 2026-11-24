@@ -12,7 +12,7 @@
   <link rel="manifest" href="/site.webmanifest">
   <link rel="preload" href="/assets/fonts/inter-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/assets/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/assets/site.css?v=10">
+  <link rel="stylesheet" href="/assets/site.css?v=11">
   <script src="/assets/site.js?v=3"></script>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Rehearsal">
@@ -256,6 +256,29 @@ Our payment processor double charged the orders listed here: 5023, 5035, 5062 an
           </table>
         </div>
         <p class="gallery-note">A real free model (gpt-oss-120b) resisted most of these on its own. Once, it paid out the 24 dollars the slow drip asked for. Rehearsal does not depend on the model being right: it judges the changes. <a href="/try">Try every attack in your browser.</a></p>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="compare-title">
+      <div class="wrap">
+        <div class="section-head center">
+          <p class="eyebrow">How it compares</p>
+          <h2 id="compare-title">The other ways to trust an agent.</h2>
+          <p class="lead">Each common answer gives up something: safety, the real work, or the whole picture. Rehearsal keeps all three, because it judges what would change before anything does.</p>
+        </div>
+        <div class="table-wrap">
+          <table class="stack compare" aria-labelledby="compare-title">
+            <thead><tr><th scope="col">Approach</th><th scope="col">Catches an attack that reads like ordinary text</th><th scope="col">Shows the person the combined effect</th><th scope="col">The agent still gets real work done</th><th scope="col">Live gets exactly what was reviewed</th><th scope="col">Undo</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Injection filter</th><td data-label="Catches an attack that reads like ordinary text">No, 0 of 7 in our gallery</td><td data-label="Shows the person the combined effect">No</td><td data-label="The agent still gets real work done">Yes</td><td data-label="Live gets exactly what was reviewed">No review</td><td data-label="Undo">No</td></tr>
+              <tr><th scope="row">Approve every call</th><td data-label="Catches an attack that reads like ordinary text">Only if the person spots it in one call</td><td data-label="Shows the person the combined effect">No, one call at a time</td><td data-label="The agent still gets real work done">Yes, slowly</td><td data-label="Live gets exactly what was reviewed">Call by call, never the whole</td><td data-label="Undo">No</td></tr>
+              <tr><th scope="row">Read only agent</th><td data-label="Catches an attack that reads like ordinary text">Yes, by doing nothing</td><td data-label="Shows the person the combined effect">Nothing to see</td><td data-label="The agent still gets real work done">No</td><td data-label="Live gets exactly what was reviewed">Nothing changes</td><td data-label="Undo">Nothing to undo</td></tr>
+              <tr><th scope="row">Plain sandbox</th><td data-label="Catches an attack that reads like ordinary text">Only inside the sandbox</td><td data-label="Shows the person the combined effect">Only by digging through it</td><td data-label="The agent still gets real work done">Not on live data</td><td data-label="Live gets exactly what was reviewed">Nothing reaches live</td><td data-label="Undo">Nothing to undo</td></tr>
+              <tr class="ours"><th scope="row">Rehearsal</th><td data-label="Catches an attack that reads like ordinary text">Yes, from what it would do, 7 of 7</td><td data-label="Shows the person the combined effect">Yes, a plain list with reasons</td><td data-label="The agent still gets real work done">Yes</td><td data-label="Live gets exactly what was reviewed">Yes, the replay is checked row by row</td><td data-label="Undo">One click, refused if others changed live since</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="gallery-note">Of the six real recorded model runs in the demo, three were applied by the trust policy without asking. The three that moved money waited for a person.</p>
       </div>
     </section>
 

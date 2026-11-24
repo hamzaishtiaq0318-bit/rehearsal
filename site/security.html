@@ -12,7 +12,7 @@
   <link rel="manifest" href="/site.webmanifest">
   <link rel="preload" href="/assets/fonts/inter-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/assets/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/assets/site.css?v=10">
+  <link rel="stylesheet" href="/assets/site.css?v=11">
   <script src="/assets/site.js?v=3"></script>
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="Rehearsal">
@@ -87,6 +87,7 @@
               <tr><td>Model keys leaking to generated code</td><td>The generated MCP server starts with only its base URL in its environment, and the protected app never receives Rehearsal's own keys or settings.</td><td>Yes</td></tr>
               <tr><td>Live data changing during review</td><td>Approval re checks live against the snapshot and refuses if anything moved.</td><td>Yes</td></tr>
               <tr><td>A replay that fails, differs or crashes</td><td>Live is restored from the pre approval snapshot and the restore is verified, even when the tool server dies part way through. If a restore cannot be confirmed, the snapshot is kept where a restart will not remove it.</td><td>Yes</td></tr>
+              <tr><td>Losing track of work when Rehearsal restarts</td><td>Reviews still waiting, and applied work that can still be undone, are saved with their database copies and come back after a restart. Anything that can no longer be undone safely is not brought back.</td><td>Yes</td></tr>
               <tr><td>A runaway agent</td><td>A hard limit on tool calls per task, enforced even inside a single model reply.</td><td>Yes</td></tr>
               <tr><td>Approvals forged from another website</td><td>Writes need a per launch token and a JSON body, and requests for other host names are refused, which stops DNS rebinding.</td><td>Yes</td></tr>
               <tr><td>Someone else on the machine reading customer data</td><td>Reading tickets, rehearsals or the audit log needs the same link. Without it the console only says that it is locked.</td><td>Yes</td></tr>

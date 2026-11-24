@@ -12,7 +12,7 @@
   <link rel="manifest" href="/site.webmanifest">
   <link rel="preload" href="/assets/fonts/inter-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/assets/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/assets/site.css?v=10">
+  <link rel="stylesheet" href="/assets/site.css?v=11">
   <script src="/assets/site.js?v=3"></script>
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="Rehearsal">
@@ -167,6 +167,7 @@
         <h2>3. Decide, then verify</h2>
         <p>Approving replays only the recorded writes that succeeded, in order, through the same generated MCP server pointed at the live app. Before replaying, Rehearsal checks that live data has not changed since the snapshot; if it has, it refuses and asks for a fresh rehearsal. After replaying, it diffs live against a snapshot taken just before approval and checks the result matches the rehearsal exactly. If anything differs, or any call fails, live data is restored and the restore itself is verified.</p>
         <p>Rejecting discards the shadow. Undo restores the pre approval snapshot and checks the result, but only when nobody else has changed live data since, so it can never erase other people's work. If a restore ever cannot be confirmed, the snapshot is kept outside the session folder so it survives a restart.</p>
+        <p>Restarting Rehearsal loses nothing a person still needs. Reviews waiting for a decision, and applied work that can still be undone, are saved with their database copies and come back with their conversation. The changed rows are worked out again from those copies, so they always match what is on disk.</p>
         <h3>Only interrupt people when it matters</h3>
         <p>Approving every click wears reviewers out, so Rehearsal has a trust policy. Work that raises no flag at all, such as a reply or a ticket status change for one customer, is applied without asking. It goes through exactly the same verified replay, the audit log records the policy as the decider, and it can be undone. Money, more than one customer, or anything unusual always waits for a person.</p>
 

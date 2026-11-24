@@ -11,7 +11,7 @@ import requests
 from rehearsal import audit
 from rehearsal.audit import AuditLog
 from rehearsal.config import RulesConfig
-from rehearsal.engine import InvalidState, State, row_id
+from rehearsal.engine import Engine, InvalidState, State, row_id
 from rehearsal.toolserver import CallResult
 
 pytestmark = pytest.mark.anyio
@@ -207,6 +207,64 @@ async def test_small_payouts_to_one_customer_add_up_to_the_daily_limit(engine):
     third = await engine.rehearse("Goodwill for customer 2, again")
     await third.call("add_store_credit", {"customer_id": 2, "amount": 20, "reason": "Goodwill"})
     assert not any("daily limit" in f.title for f in (await third.finish(summary="Added 20.00 USD credit.")).flags)
+
+
+async def restart(engine):
+    """Close an engine and start a new one on the same folders and live data, like restarting Rehearsal."""
+    await engine.close()
+    return await Engine(engine.config).start()
+
+
+async def test_a_waiting_review_survives_a_restart(engine):
+    waiting = await engine.rehearse("Resolve ticket 1002")
+    await resolve_torn_jacket(waiting)
+    review = await waiting.finish(summary="Refunded the jacket (249.00 USD) and closed the ticket.")
+    decided = await engine.rehearse("Resolve ticket 1003")
+    await decided.call("reply_to_ticket", {"ticket_id": 1003, "body": "It shipped."})
+    await decided.finish()
+    await decided.reject(by="reviewer")
+
+    again = await restart(engine)
+    try:
+        assert set(again.rehearsals) == {waiting.id} and not decided.dir.exists()  # decided work is not kept
+        back = again.rehearsals[waiting.id]
+        assert back.state == State.READY and back.review.risk == review.risk
+        assert [f.title for f in back.review.flags] == [f.title for f in review.flags]
+        assert len(back.review.changes) == len(review.changes) and back.causes == waiting.causes
+        assert back.sources == waiting.sources and back.summary == waiting.summary
+        outcome = await back.approve(by="reviewer")  # the recorded calls replay as if nothing happened
+        assert outcome.state == State.APPLIED and outcome.verified
+        assert live(again, "SELECT amount_cents FROM refunds WHERE order_id = 5003") == [(24900,)]
+    finally:
+        await again.close()
+
+
+async def test_applied_work_can_still_be_undone_after_a_restart(engine):
+    r = await engine.rehearse("Resolve ticket 1004")
+    await r.call("add_store_credit", {"customer_id": 4, "amount": 32.4, "reason": "Late delivery"})
+    await r.finish()
+    assert (await r.approve(by="reviewer")).state == State.APPLIED
+
+    again = await restart(engine)
+    try:
+        undone = await again.rehearsals[r.id].undo(by="reviewer")
+        assert undone.state == State.UNDONE and undone.verified
+        assert live(again, "SELECT credit_cents FROM customers WHERE id = 4") == [(0,)]
+    finally:
+        await again.close()
+
+
+async def test_applied_work_that_can_no_longer_be_undone_is_not_kept(engine):
+    r = await engine.rehearse("Resolve ticket 1004")
+    await r.call("add_store_credit", {"customer_id": 4, "amount": 32.4, "reason": "Late delivery"})
+    await r.finish()
+    await r.approve(by="reviewer")
+    requests.post(f"{engine.live_app.base_url}/orders/5001/refunds", json={"amount": 1, "reason": "other desk"})
+    again = await restart(engine)
+    try:
+        assert again.rehearsals == {} and not r.dir.exists()
+    finally:
+        await again.close()
 
 
 async def test_steps_can_run_in_separate_tasks_like_web_requests(engine):

@@ -5,6 +5,7 @@ import sqlite3
 import pytest
 
 from rehearsal import config
+from rehearsal.audit import paid_today
 from rehearsal.dbdiff import RowChange
 from rehearsal.engine import RecordedCall
 from rehearsal.config import RulesConfig
@@ -45,6 +46,25 @@ def test_money_counts_a_raised_amount_and_never_a_negative_one():
                        {"id": 7, "amount_cents": 90000})
     negative = refund(8, -90000)  # would cancel out the raise in a total if it counted
     assert [cents for _, cents in money_out([raised, negative], TARGET)] == [89000]
+
+
+def test_payouts_with_no_owner_still_count_toward_the_daily_limit():
+    flags = rule_flags([refund(7, 60000)], [None], TARGET, RulesConfig(max_money_per_owner_per_day_cents=50000))
+    assert [f.title for f in flags] == ["Breaks a rule: pays one customer more than the daily limit"]
+    assert flags[0].detail.startswith("Payouts with no customer attached would receive 600.00 USD today")
+
+
+def test_the_daily_total_counts_unconfirmed_restores_and_only_confirmed_undos():
+    day = "2026-11-24"
+    entries = [
+        {"event": "rehearsal_applied", "at": f"{day}T10:00:00+00:00", "rehearsal": "a", "paid": {"2": 24900}},
+        {"event": "rehearsal_undone", "at": f"{day}T10:05:00+00:00", "rehearsal": "a", "verified": False},
+        {"event": "rollback_unverified", "at": f"{day}T11:00:00+00:00", "rehearsal": "b", "paid": {"2": 1000}},
+        {"event": "rehearsal_applied", "at": "2026-11-23T10:00:00+00:00", "rehearsal": "c", "paid": {"2": 99999}},
+    ]
+    assert paid_today(entries, day) == {"2": 25900}  # an undo nobody could confirm still counts
+    entries[1]["verified"] = True
+    assert paid_today(entries, day) == {"2": 1000}
 
 
 def test_honest_agent_raises_no_say_do_flags():

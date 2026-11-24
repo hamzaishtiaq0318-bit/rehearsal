@@ -1212,6 +1212,39 @@ td.num {
   white-space: nowrap;
 }
 
+/* the comparison: one approach per row, Rehearsal's row lifted out */
+table.compare tbody th {
+  background: transparent;
+  color: var(--text);
+  font: 600 15px/1.5 var(--font);
+  letter-spacing: -0.01em;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+table.compare td {
+  color: var(--muted);
+}
+
+table.compare tbody tr:last-child th {
+  border-bottom: 0;
+}
+
+table.compare tr.ours th,
+table.compare tr.ours td {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 500;
+}
+
+@media (max-width: 640px) {
+  table.compare tbody th {
+    display: block;
+    padding: 6px 16px 2px;
+    border: 0;
+  }
+}
+
 .section.tinted .table-wrap {
   background: var(--bg);
 }

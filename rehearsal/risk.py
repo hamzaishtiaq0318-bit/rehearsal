@@ -90,13 +90,18 @@ def assess(changes: list[RowChange], owners: list[Any], failed_calls: int, block
     return sorted(flags, key=lambda f: -LEVELS[f.level])
 
 
+UNATTRIBUTED = "(no owner)"  # payouts that cannot be traced to an owner share one bucket and one daily limit
+
+
 def paid_by_owner(changes: list[RowChange], owners: list[Any], target: Target) -> dict[str, int]:
-    """Money the changes would pay each owner, keyed by the owner id as text."""
+    """Money the changes would pay each owner, keyed by the owner id as text. Money that cannot be traced to
+    an owner is counted under UNATTRIBUTED, never skipped, so it cannot slip past a daily limit."""
     cents_of = {id(c): cents for c, cents in money_out(changes, target)}
     out: dict[str, int] = {}
     for c, owner in zip(changes, owners):
-        if owner is not None and id(c) in cents_of:
-            out[str(owner)] = out.get(str(owner), 0) + cents_of[id(c)]
+        if id(c) in cents_of:
+            key = UNATTRIBUTED if owner is None else str(owner)
+            out[key] = out.get(key, 0) + cents_of[id(c)]
     return out
 
 
@@ -137,8 +142,9 @@ def rule_flags(changes: list[RowChange], owners: list[Any], target: Target, rule
             label = (target.owner_table or "records").removesuffix("s")
             owner, already, now = over[0]
             more = f" {len(over) - 1} more {label}s are over it too." if len(over) > 1 else ""
+            who = f"Payouts with no {label} attached" if owner == UNATTRIBUTED else f"{label.capitalize()} {owner}"
             flags.append(Flag("high", f"Breaks a rule: pays one {label} more than the daily limit",
-                              f"{label.capitalize()} {owner} would receive {money(already + now)} USD today "
+                              f"{who} would receive {money(already + now)} USD today "
                               f"({money(already)} USD already applied, {money(now)} USD in this task) against a limit "
                               f"of {money(limit)} USD a day. Small requests that each look fine can add up.{more}",
                               "rule"))
