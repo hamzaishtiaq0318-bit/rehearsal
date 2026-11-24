@@ -35,6 +35,7 @@ from .present import rehearsal_dict
 from .risk import money
 from .scenarios import LABEL as SIMULATION_LABEL
 from .scenarios import CompromisedAgent
+from .toolserver import fetch_openapi
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB_DIST = ROOT / "web" / "dist"
@@ -186,6 +187,32 @@ class Revision(BaseModel):
         return _plain(value)
 
 
+class NewTicket(BaseModel):
+    """A ticket the person at the console writes as the customer, to see how the agent and Rehearsal handle it."""
+    customer_id: int = Field(ge=1, le=10_000_000)
+    order_id: int | None = Field(default=None, ge=1, le=10_000_000)
+    subject: str = Field(min_length=3, max_length=120)
+    message: str = Field(min_length=2, max_length=2000)
+
+    @field_validator("subject")
+    @classmethod
+    def one_line(cls, value: str) -> str:
+        value = _plain(value)
+        if len(value) < 3:
+            raise ValueError("Write a subject of at least 3 characters")
+        return value
+
+    @field_validator("message")
+    @classmethod
+    def customer_text(cls, value: str) -> str:
+        value = value.replace("\r\n", "\n").replace("\r", "\n").strip()  # line breaks stay: customers write them
+        if any(ord(ch) < 32 and ch not in "\n\t" for ch in value):
+            raise ValueError("control characters are not allowed")
+        if len(value) < 2:
+            raise ValueError("Write the customer's message")
+        return value
+
+
 def conversation(run: Run) -> dict:
     return {"mode": run.mode, "model": run.model, "title": run.title, "request": run.request,
             "ticket_id": run.ticket_id}
@@ -211,6 +238,44 @@ class Console:
             SIMULATION_TICKET: ("A polite billing notice", SIMULATION_LABEL,
                                 lambda: CompromisedAgent(SIMULATION_TICKET))}
         self._http = httpx.AsyncClient(timeout=10)
+        self._ticket_form: bool | None = None  # whether the live app can open tickets, from its OpenAPI spec
+
+    async def can_open_tickets(self) -> bool:
+        """Whether the protected app has its own way to open a ticket (POST /tickets)."""
+        if self._ticket_form is None:
+            spec = await fetch_openapi(self.engine.live_app.base_url)
+            if spec is None:
+                return False  # asked again next time, in case the app was still starting
+            self._ticket_form = "post" in (spec.get("paths", {}).get("/tickets") or {})
+        return self._ticket_form
+
+    async def open_ticket(self, body: NewTicket) -> dict:
+        """Open a ticket on the live app the way a customer would, through the app's own endpoint. It is never an
+        agent tool: the person at the console plays the customer, then the agent works the ticket as usual."""
+        if self.public_demo:
+            raise HTTPException(403, "The public demo does not take new tickets. Run Rehearsal yourself to write one.")
+        if not await self.can_open_tickets():
+            raise HTTPException(404, f"{self.engine.target.name} has no way to open a ticket")
+        # The lock approvals and undo hold: a ticket landing in the middle of a replay would fail the replay's
+        # check, and the rollback that follows would erase the ticket.
+        async with self.engine._apply_lock:
+            try:
+                r = await self._http.post(self.engine.live_app.base_url + "/tickets", json=body.model_dump())
+            except httpx.HTTPError as e:
+                raise HTTPException(502, "The live app did not answer. Try again in a moment.") from e
+        if r.status_code in (404, 422):  # an unknown customer or order, or an order of someone else
+            try:
+                detail = r.json().get("detail")
+            except ValueError:
+                detail = None
+            raise HTTPException(r.status_code, detail if isinstance(detail, str)
+                                else "The app refused the ticket. Check the values you entered.")
+        if r.status_code != 201:
+            raise HTTPException(502, f"The live app answered {r.status_code} when opening the ticket")
+        ticket = r.json()
+        self.engine.audit.write("ticket_opened", by="console", ticket=ticket["id"], customer=body.customer_id,
+                                order=body.order_id)
+        return ticket
 
     async def aclose(self) -> None:
         for run in self.runs.values():
@@ -505,6 +570,7 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
             "simulation_ticket": SIMULATION_TICKET,
             "simulations": [{"ticket_id": t, "name": name} for t, (name, _, _) in sorted(c.simulations.items())],
             "active": c.active(), "max_active": c.max_active,
+            "new_tickets": not public_demo and await c.can_open_tickets(),
         }
 
     @app.get("/api/tickets")
@@ -526,6 +592,26 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
         if not 1 <= ticket_id <= 10_000_000:
             raise HTTPException(404, "Not found")
         return await con(request).live_get(f"/tickets/{ticket_id}")
+
+    @app.post("/api/tickets", status_code=201)
+    async def open_ticket(body: NewTicket, request: Request) -> dict:
+        return await con(request).open_ticket(body)
+
+    # Who a new ticket can come from, and their orders. Only the ticket form needs these, so the public demo,
+    # which has no form, does not list every customer.
+    @app.get("/api/customers")
+    async def customers(request: Request) -> list[dict]:
+        if public_demo:
+            raise HTTPException(403, "The public demo does not list customers")
+        return await con(request).live_get("/customers?limit=100")  # ponytail: first 100; a search box past that
+
+    @app.get("/api/customers/{customer_id}/orders")
+    async def customer_orders(customer_id: int, request: Request) -> list[dict]:
+        if public_demo:
+            raise HTTPException(403, "The public demo does not list customers")
+        if not 1 <= customer_id <= 10_000_000:
+            raise HTTPException(404, "Not found")
+        return await con(request).live_get(f"/customers/{customer_id}/orders")
 
     @app.get("/api/rehearsals")
     async def rehearsals(request: Request) -> list[dict]:

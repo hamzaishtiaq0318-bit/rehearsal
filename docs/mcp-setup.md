@@ -18,7 +18,7 @@ Synapse server (`kestrel-desk`) for clients that use the `@2ndbrainlabs-ai/synap
 
 ## Which endpoints the agent gets, and why
 
-Synapse found 15 endpoints. The agent gets 10. Fewer, clearer tools make agents more reliable,
+Kestrel Desk has 16 endpoints. The agent gets 10. Fewer, clearer tools make agents more reliable,
 and every tool left out is one less way for a tricked agent to cause harm.
 
 | Tool | Route | Changes data | Why it is exposed |
@@ -40,6 +40,7 @@ and every tool left out is one less way for a tricked agent to cause harm.
 | `export_customers` | GET /admin/export/customers | Bulk personal data export; a prompt injection could leak it |
 | `search_customers` | GET /customers | Synapse drops query parameters, so the tool would ignore its search term |
 | `list_orders` | GET /orders | Same query parameter issue, and support never needs every order in the store |
+| `open_ticket` | POST /tickets | The store's contact form, for customers. A support agent never opens tickets, and a tricked one could flood the queue. The console's "Write your own ticket" uses it, outside the agent |
 | `health` | GET /health | Operations endpoint, no value to an agent |
 
 The four tools that change data never touch live records directly. Rehearsal runs them on a

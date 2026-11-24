@@ -30,7 +30,7 @@ Built on [Synapse](https://www.npmjs.com/package/@2ndbrainlabs-ai/synapse-cli) f
 |---|---|
 | Synapse CLI at the core | The generated [`synapse_auto_server.py`](legacy/kestrel_desk/synapse_auto_server.py), committed exactly as Synapse wrote it, is Rehearsal's only path to the app. See [why Synapse is at the core](#why-synapse-is-at-the-core). |
 | The repository | This repo. MIT licensed. |
-| The MCP setup | [docs/mcp-setup.md](docs/mcp-setup.md): the build command, which 10 of the 15 endpoints are exposed and why, and the client config. Proxy mode config is in [two ways to use it](#two-ways-to-use-it). |
+| The MCP setup | [docs/mcp-setup.md](docs/mcp-setup.md): the build command, which 10 of the 16 endpoints are exposed and why, and the client config. Proxy mode config is in [two ways to use it](#two-ways-to-use-it). |
 | A short write-up: the problem and why Synapse fits | [The problem](#the-problem), [how it works](#how-it-works) and [why Synapse is at the core](#why-synapse-is-at-the-core). |
 | An end to end demo | [Try it in your browser](https://rehearsal-ai-app.web.app/try) with nothing to install. The [quickstart](#quickstart) runs the whole cycle locally with no API key: rehearse, review, approve, verify, undo. |
 | A confirmation step before any action that changes data | Nothing reaches live data until a person approves the exact row changes. High risk approvals need an extra acknowledgement. |
@@ -92,7 +92,7 @@ Rehearsal is not a wrapper around a hand written API client. The only way it tou
 - **Rebuilds are safe.** After `synapse build --discover`, Rehearsal picks up the new server. A rehearsal made with the old server is refused at approval and must be run again.
 - **Any Synapse built app.** Nothing is specific to the demo store. `rehearsal init` writes the config from the generated server, the app's code and its schema. A second app, [Larkspur Clinic](legacy/larkspur_clinic/), is protected that way with no Rehearsal code that knows about it.
 
-The [MCP setup](docs/mcp-setup.md) lists which 10 of the 15 endpoints Synapse found are exposed and why, the exact build command, and seven Synapse behaviours we found and worked around. A one page proposal, [`synapse build --rehearse`](docs/synapse-rehearse.md), sketches how Synapse itself could ship this.
+The [MCP setup](docs/mcp-setup.md) lists which 10 of the app's 16 endpoints are exposed and why, the exact build command, and seven Synapse behaviours we found and worked around. A one page proposal, [`synapse build --rehearse`](docs/synapse-rehearse.md), sketches how Synapse itself could ship this.
 
 ## Two ways to use it
 
@@ -100,6 +100,7 @@ The [MCP setup](docs/mcp-setup.md) lists which 10 of the 15 endpoints Synapse fo
 
 A chat style console where you ask for something ("please resolve ticket 1002"), watch a free AI model work on the private copy, and then see a plain summary, the risk, every change, and a clear question: apply it or cancel.
 
+- **Write your own ticket.** Play the customer: pick who is writing and which order it is about, and write the message, with a hidden instruction in it if you like. The ticket opens through Kestrel Desk's own contact endpoint, which is never an agent tool, then the agent works on it like any other ticket. The browser demo has no live agent, so this needs Rehearsal running on your machine.
 - **Ask for changes.** Not quite right? Type what should be different ("only refund the jacket"). The proposal is cancelled and the agent redoes the task on a fresh copy with your words.
 - **Save a report.** Every rehearsal prints as a one page incident report: the request, each action and row change, the warnings, the decision, who made it, and the audit fingerprint.
 - **See the audit chain catch an edit.** The audit page edits one entry on a copy of the log and shows the exact entry where the hash check fails. The real log is never touched.
@@ -144,7 +145,7 @@ In Cursor it goes under Settings, MCP; other clients have their own MCP config f
 | **7 of 7** | attacks in the [gallery](#attack-gallery-seven-ways-an-agent-goes-wrong) flagged by Rehearsal. Prompt Guard caught none of them. |
 | **0 model calls** | added by Rehearsal. Measured on a Windows laptop: about 4 seconds to start the private copy, 30 ms per tool call on it, 0.16 seconds to prepare the review, and 0.12 seconds to apply and verify. |
 | **0 lines** | of the existing app changed. |
-| **208 tests** | that start real app processes and real generated MCP servers: the full cycle, 16 random tasks that must keep both promises (nothing live without approval, live gets exactly what was reviewed), the attack gallery, where targets came from, words against changes, data leaks, your own rules, trust levels, two person approval, a daily money limit across tasks, reviews that survive a restart, rollback, a tool server crashing part way through a replay, path injection, the console API and its security checks, MCP proxy mode over the real protocol, and the second app protected from a generated config. |
+| **222 tests** | that start real app processes and real generated MCP servers: the full cycle, 16 random tasks that must keep both promises (nothing live without approval, live gets exactly what was reviewed), the attack gallery, where targets came from, words against changes, data leaks, your own rules, trust levels, two person approval, a daily money limit across tasks, reviews that survive a restart, rollback, a tool server crashing part way through a replay, path injection, the console API and its security checks, MCP proxy mode over the real protocol, and the second app protected from a generated config. |
 
 The compromised agent in the demo is a clearly labelled script, so the attack can be shown every time. The evaluation runs the real model:
 
@@ -210,7 +211,7 @@ The server prints a console link with a one time token. Open it and try:
 - **Ticket 1002** with the AI agent: a torn jacket. Approve the refund and watch it land on live data, verified.
 - **Ticket 1006** with the attack simulation: the polite injection. Rehearsal flags twelve refunds to twelve customers and you cancel it.
 
-Run the tests with `python -m pytest tests`. Last full run on a fresh clone (24 Nov 2026): **208 passed, no warnings**, and the console type check and both builds passed. The same checks are written as GitHub Actions in [`tests.yml`](.github/workflows/tests.yml), which are switched off for now.
+Run the tests with `python -m pytest tests`. Last full run (24 Nov 2026): **222 passed, no warnings**, and the console type check and both builds passed. The same checks are written as GitHub Actions in [`tests.yml`](.github/workflows/tests.yml), which are switched off for now.
 
 Every setting, such as `REHEARSAL_TOKEN`, `REHEARSAL_REVIEWERS` or `REHEARSAL_AUDIT_KEY`, can go in `.env`. The full list is on the [docs page](https://rehearsal-ai-app.web.app/docs#settings).
 

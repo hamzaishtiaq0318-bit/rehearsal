@@ -2,8 +2,8 @@
 // `python -m rehearsal.capture`. Nothing here talks to a server. Decisions follow the same rules
 // the engine enforces (approve or cancel only once, undo only after an approval).
 
-import type { Api, AuditEntry, ConversationRow, Decision, EventHandler, Overview, RehearsalDetail, StartMode,
-  Status, TamperCheck, TicketDetail, TicketRow } from "./api";
+import type { Api, AuditEntry, ConversationRow, Decision, EventHandler, LiveOnly, Overview, RehearsalDetail,
+  StartMode, Status, TamperCheck, TicketDetail, TicketRow } from "./api";
 import { ApiError } from "./api";
 import data from "./demo-data.json";
 
@@ -55,7 +55,7 @@ function newId(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export function createDemoApi(): Omit<Api, "reloadTools" | "pause" | "revise"> {
+export function createDemoApi(): Omit<Api, Exclude<LiveOnly, "subscribe">> {
   let runs: LocalRun[] = load();
 
   function load(): LocalRun[] {

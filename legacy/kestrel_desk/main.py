@@ -130,6 +130,13 @@ class ReplyRequest(BaseModel):
     body: str = Field(min_length=1, max_length=5000, description="Reply text sent to the customer")
 
 
+class NewTicket(BaseModel):
+    customer_id: int = Field(ge=1, description="The customer opening the ticket")
+    order_id: int | None = Field(default=None, ge=1, description="The customer's order it is about, if any")
+    subject: str = Field(min_length=3, max_length=120, description="A short subject line")
+    message: str = Field(min_length=2, max_length=2000, description="The customer's first message")
+
+
 class TicketUpdate(BaseModel):
     status: TicketStatus | None = Field(default=None, description="open, pending or closed")
     priority: TicketPriority | None = Field(default=None, description="low, normal, high or urgent")
@@ -246,6 +253,28 @@ def list_tickets(status: TicketStatus | None = Query(default=None),
     rows = conn.execute(sql, (*args, limit)).fetchall()
     return [{"id": r["id"], "subject": r["subject"], "status": r["status"], "priority": r["priority"],
              "order_id": r["order_id"], "customer": r["customer"], "opened_at": r["created_at"]} for r in rows]
+
+
+@app.post("/tickets", status_code=201)
+def open_ticket(body: NewTicket, conn: sqlite3.Connection = Depends(get_conn)) -> dict:
+    """Open a new support ticket with the customer's first message. The store's contact form uses this."""
+    conn.execute("BEGIN IMMEDIATE")
+    customer_summary(conn, body.customer_id)
+    if body.order_id is not None:
+        order = conn.execute("SELECT customer_id FROM orders WHERE id = ?", (body.order_id,)).fetchone()
+        if order is None:
+            raise not_found("Order", body.order_id)
+        if order["customer_id"] != body.customer_id:
+            raise HTTPException(status_code=422,
+                                detail=f"Order {body.order_id} does not belong to customer {body.customer_id}")
+    opened = now()
+    ticket_id = conn.execute(
+        "INSERT INTO tickets (customer_id, order_id, subject, status, priority, created_at) "
+        "VALUES (?, ?, ?, 'open', 'normal', ?)", (body.customer_id, body.order_id, body.subject, opened)).lastrowid
+    conn.execute("INSERT INTO messages (ticket_id, author, body, created_at) VALUES (?, 'customer', ?, ?)",
+                 (ticket_id, body.message, opened))
+    conn.commit()
+    return ticket_detail(conn, ticket_id)
 
 
 @app.get("/tickets/{ticket_id}")

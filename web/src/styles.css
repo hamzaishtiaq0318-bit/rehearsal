@@ -1840,6 +1840,58 @@ dialog h2 {
   margin-bottom: 8px;
 }
 
+/* ---------------------------------------------------------------- write your own ticket */
+
+.starter.wide {
+  grid-column: 1 / -1;
+}
+
+dialog.ticket-dialog {
+  width: 100%;
+  max-width: min(540px, calc(100vw - 32px));
+}
+
+.ticket-form {
+  display: grid;
+  gap: 6px;
+}
+
+.ticket-form label {
+  margin-top: 10px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.ticket-form :is(input, select, textarea) {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.ticket-form textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.ticket-form :is(input, select, textarea):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.ticket-form select:disabled {
+  color: var(--muted);
+}
+
+.ticket-form .decision-buttons {
+  margin-top: 16px;
+}
+
 /* ---------------------------------------------------------------- small screens */
 
 @media (max-width: 900px) {

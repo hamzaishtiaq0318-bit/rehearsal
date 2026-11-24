@@ -28,6 +28,31 @@ export interface Status {
   max_active: number;
   /** Set only by the website's browser demo, which replays recorded runs with no server. */
   static_demo?: boolean;
+  /** The protected app has its own way to open a ticket, so the console can write one as a customer. */
+  new_tickets?: boolean;
+}
+
+export interface CustomerRow {
+  id: number;
+  name: string;
+  email: string;
+  tier: string;
+}
+
+export interface OrderRow {
+  id: number;
+  status: string;
+  total: string;
+  placed_at: string;
+  items: { name: string; quantity: number }[];
+}
+
+/** A ticket written at the console as the customer. */
+export interface NewTicketBody {
+  customer_id: number;
+  order_id: number | null;
+  subject: string;
+  message: string;
 }
 
 export interface TicketRow {
@@ -324,6 +349,9 @@ const live = {
   status: () => request<Status>("/api/status"),
   tickets: () => request<TicketRow[]>("/api/tickets"),
   ticket: (id: number) => request<TicketDetail>(`/api/tickets/${id}`),
+  openTicket: (body: NewTicketBody) => request<TicketDetail>("/api/tickets", body),
+  customers: () => request<CustomerRow[]>("/api/customers"),
+  customerOrders: (id: number) => request<OrderRow[]>(`/api/customers/${id}/orders`),
   rehearsal: (id: string) => request<RehearsalDetail>(`/api/rehearsals/${encodeURIComponent(id)}`),
   conversations: () => request<ConversationRow[]>("/api/rehearsals"),
   start: (body: { ticket_id?: number; message?: string; mode: StartMode }) =>
@@ -344,17 +372,26 @@ const live = {
 
 export type Api = typeof live;
 
+/** What only a real server can do. The browser demo answers these with a short explanation. */
+export type LiveOnly = "subscribe" | "reloadTools" | "pause" | "revise" | "openTicket" | "customers" | "customerOrders";
+
 /** The website's "Try it" build (vite build --mode static) runs on recorded engine runs, with no server. */
 export const STATIC_DEMO = import.meta.env.MODE === "static";
 
 function staticApi(): Api {
   const demo = import("./demo").then((m) => m.createDemoApi());
-  const call = <K extends Exclude<keyof Api, "subscribe" | "reloadTools" | "pause" | "revise">>(name: K) =>
+  const call = <K extends Exclude<keyof Api, LiveOnly>>(name: K) =>
     (async (...args: unknown[]) => ((await demo)[name] as (...a: unknown[]) => unknown)(...args)) as Api[K];
+  const needsAgent = async (): Promise<never> => {
+    throw new ApiError(403, "Writing your own ticket needs the live agent. Run Rehearsal yourself to try it.");
+  };
   return {
     status: call("status"),
     tickets: call("tickets"),
     ticket: call("ticket"),
+    openTicket: needsAgent,
+    customers: needsAgent,
+    customerOrders: needsAgent,
     rehearsal: call("rehearsal"),
     conversations: call("conversations"),
     start: call("start"),

@@ -19,6 +19,7 @@ const EVENT_LABEL: Record<string, string> = {
   rollback_unverified: "Rollback not verified",
   demo_reset: "Demo data reset",
   tools_reloaded: "Tools reloaded",
+  ticket_opened: "Ticket written at the console",
 };
 
 function details(e: AuditEntry): string {
@@ -29,6 +30,9 @@ function details(e: AuditEntry): string {
     return parts.join(", ");
   }
   if (e.event === "review_ready") return `${String(e.rows_changed)} rows, ${String(e.risk)} risk`;
+  if (e.event === "ticket_opened") {
+    return `Ticket ${String(e.ticket)} for customer ${String(e.customer)}${e.order ? `, order ${String(e.order)}` : ""}`;
+  }
   if (typeof e.message === "string") return e.message;
   if (typeof e.task === "string") return e.task;
   return "";

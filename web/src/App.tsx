@@ -8,6 +8,7 @@ import type { ComposerSubmit } from "./components/Composer";
 import { Composer } from "./components/Composer";
 import { Conversation } from "./components/Conversation";
 import { Logo } from "./components/Logo";
+import { NewTicket } from "./components/NewTicket";
 import { OverviewView } from "./components/OverviewView";
 import { Sidebar } from "./components/Sidebar";
 
@@ -57,12 +58,13 @@ function Locked() {
 interface StartProps {
   status: Status | null;
   tickets: TicketRow[];
+  conversations: ConversationRow[];
   canSend: boolean;
   busy: boolean;
   onStart: (body: { ticket_id?: number; message?: string; mode: StartMode }) => void;
 }
 
-function NewChat({ status, tickets, canSend, busy, onStart }: StartProps) {
+function NewChat({ status, tickets, conversations, canSend, busy, onStart }: StartProps) {
   const open = tickets.filter((t) => t.status !== "closed");
   const attack = status?.simulation_ticket ?? 1006;
   const gallery = (status?.simulations ?? []).filter((s) => s.ticket_id !== attack);
@@ -101,6 +103,13 @@ function NewChat({ status, tickets, canSend, busy, onStart }: StartProps) {
             approve the refund it proposes.
           </span>
         </button>
+        {(status?.new_tickets || status?.static_demo) && (
+          <NewTicket target={status.target} staticDemo={Boolean(status.static_demo)} liveAgent={live}
+            disabled={!canSend || busy}
+            waiting={conversations.filter((c) => c.running || c.state === "ready").length}
+            applied={conversations.filter((c) => c.state === "applied").length}
+            onOpened={(t) => onStart({ ticket_id: t.id, mode: "agent" })} />
+        )}
       </div>
 
       {gallery.length > 0 && (
@@ -288,7 +297,8 @@ export function App() {
               </div>
             </div>
           ) : (
-            <NewChat status={status} tickets={tickets} canSend={canSend} busy={starting} onStart={start} />
+            <NewChat status={status} tickets={tickets} conversations={conversations} canSend={canSend} busy={starting}
+              onStart={start} />
           )}
         </main>
       </div>

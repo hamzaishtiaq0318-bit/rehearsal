@@ -102,7 +102,7 @@ cd legacy/kestrel_desk
 synapse build --local --auto --discover --base-url http://127.0.0.1:8100 \
   --endpoints "GET /tickets,GET /tickets/{ticket_id},POST /orders/{order_id}/refunds,..."</code></pre>
         </div>
-        <p>Ten of the fifteen endpoints Synapse found are exposed. Bulk customer export and permanent deletion are left out on purpose. The repository's <code>docs/mcp-setup.md</code> lists every choice and the reason for it.</p>
+        <p>Ten of the app's sixteen endpoints are exposed. Bulk customer export and permanent deletion are left out on purpose. The repository's <code>docs/mcp-setup.md</code> lists every choice and the reason for it.</p>
 
         <h2 id="config">Protecting your own app</h2>
         <p>Build the app's MCP server with Synapse, then let Rehearsal write the config. It reads the generated server, the app's code and its database schema, prints every decision, and writes a commented file you can correct:</p>
