@@ -1,4 +1,4 @@
-import { CircleAlert, Info, PanelLeftOpen, ShieldAlert, Wrench } from "lucide-react";
+import { CircleAlert, Info, LockKeyhole, PanelLeftOpen, ShieldAlert, Wrench } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import type { ConversationRow, StartMode, Status, TicketRow } from "./api";
@@ -10,7 +10,6 @@ import { Conversation } from "./components/Conversation";
 import { Logo } from "./components/Logo";
 import { OverviewView } from "./components/OverviewView";
 import { Sidebar } from "./components/Sidebar";
-import { greeting } from "./components/words";
 
 type Route = { view: "new" } | { view: "chat"; id: string } | { view: "audit" } | { view: "overview" };
 
@@ -38,9 +37,21 @@ function initialTheme(): Theme {
     const saved = localStorage.getItem("rehearsal-theme");
     if (saved === "light" || saved === "dark") return saved;
   } catch {
-    /* storage blocked: follow the system */
+    /* storage blocked: the default applies */
   }
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return "dark"; // the console's look is black first; the switch in the sidebar offers white
+}
+
+/** Without the link's token the API shares nothing but its status, so say how to get in. */
+function Locked() {
+  return (
+    <div className="locked">
+      <span className="locked-icon" aria-hidden="true"><LockKeyhole size={20} /></span>
+      <h1>This console needs its link.</h1>
+      <p>Open the console with the link Rehearsal printed in the terminal when it started. The link carries a secret
+        token that lets you see customer data and decide on changes. A reviewer link works too.</p>
+    </div>
+  );
 }
 
 interface StartProps {
@@ -65,7 +76,8 @@ function NewChat({ status, tickets, canSend, busy, onStart }: StartProps) {
     <div className="new-chat-view">
       <div className="hello">
         <span className="hello-mark" aria-hidden="true"><Logo /></span>
-        <h1>{greeting()}. What should the agent work on?</h1>
+        <p className="hello-eyebrow">Rehearsal console</p>
+        <h1>What should the agent work on?</h1>
         <p>
           The agent works through tools Synapse generated from {status?.target ?? "the app"}. Everything it does runs
           on a private copy first, and I will ask you before anything touches the live store.
@@ -142,9 +154,12 @@ export function App() {
   }, [theme]);
 
   const refresh = useCallback(() => {
-    Promise.all([api.status(), api.tickets(), api.conversations()])
-      .then(([s, t, c]) => {
+    api
+      .status()
+      .then(async (s) => {
         setStatus(s);
+        if (!hasToken() && !s.public_demo) return; // locked: nothing else is shared without the link
+        const [t, c] = await Promise.all([api.tickets(), api.conversations()]);
         setTickets(t);
         setConversations(c);
         setError(null);
@@ -243,12 +258,6 @@ export function App() {
             </span>
           </p>
         )}
-        {status && !canSend && (
-          <p className="banner" role="note">
-            <CircleAlert size={17} aria-hidden="true" />
-            Read only. Open the link printed in the terminal when Rehearsal started to talk to the agent.
-          </p>
-        )}
         {error && (
           <p className="banner" role="alert">
             <CircleAlert size={17} aria-hidden="true" />
@@ -257,7 +266,11 @@ export function App() {
         )}
 
         <main id="content" className="content" tabIndex={-1}>
-          {route.view === "overview" ? (
+          {status && !canSend ? (
+            <div className="page">
+              <Locked />
+            </div>
+          ) : route.view === "overview" ? (
             <div className="page">
               <OverviewView />
             </div>

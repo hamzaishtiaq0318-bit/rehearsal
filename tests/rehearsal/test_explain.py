@@ -9,7 +9,7 @@ from rehearsal.dbdiff import RowChange
 from rehearsal.engine import RecordedCall
 from rehearsal.config import RulesConfig
 from rehearsal.explain import amounts, leak_flags, provenance, provenance_flags, say_do_flags
-from rehearsal.risk import rule_flags
+from rehearsal.risk import money_out, rule_flags
 
 TARGET = config.load().target
 
@@ -38,6 +38,13 @@ def reply(body):
 
 def titles(flags):
     return [f.title for f in flags]
+
+
+def test_money_counts_a_raised_amount_and_never_a_negative_one():
+    raised = RowChange("refunds", {"id": 7}, "changed", {"id": 7, "amount_cents": 1000},
+                       {"id": 7, "amount_cents": 90000})
+    negative = refund(8, -90000)  # would cancel out the raise in a total if it counted
+    assert [cents for _, cents in money_out([raised, negative], TARGET)] == [89000]
 
 
 def test_honest_agent_raises_no_say_do_flags():

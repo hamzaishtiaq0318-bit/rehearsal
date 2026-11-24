@@ -94,13 +94,6 @@ export const MODES = {
   simulated: { label: "Attack simulation", short: "Attack", hint: "A scripted agent that obeys the hidden instruction in ticket 1006." },
 } as const;
 
-export function greeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
-}
-
 export function dayLabel(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "Earlier";

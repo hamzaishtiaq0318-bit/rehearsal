@@ -197,3 +197,12 @@ async def test_offline_mode_talks_only_to_the_local_model(monkeypatch):
     assert seen == [("http://127.0.0.1:11434/v1/chat/completions", None, "qwen3:14b")]  # local, and no key sent
     assert reply.tool_calls[0].name == "get_ticket"
     assert not PromptGuard().available  # the injection scan calls Groq, so it stays off offline
+
+
+def test_prompt_guard_can_be_switched_off(monkeypatch):
+    from rehearsal.guard import PromptGuard
+
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-test")
+    assert PromptGuard().available  # on by default when a Groq key is set: it sends tool results to Groq
+    monkeypatch.setenv("REHEARSAL_PROMPT_GUARD", "0")
+    assert not PromptGuard().available

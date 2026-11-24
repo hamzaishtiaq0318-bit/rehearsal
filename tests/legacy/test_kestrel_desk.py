@@ -1,25 +1,27 @@
-"""Behaviour tests for the Kestrel Desk legacy app (the system Rehearsal protects)."""
+"""Behaviour tests for the Kestrel Desk legacy app (the system Rehearsal protects), over real HTTP."""
 import re
 import sqlite3
-import sys
-from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
+import requests
+import seed
 
-APP_DIR = Path(__file__).resolve().parents[2] / "legacy" / "kestrel_desk"
-sys.path.insert(0, str(APP_DIR))
 
-import main  # noqa: E402
-import seed  # noqa: E402
+class AppClient(requests.Session):
+    """Requests to one running copy of the app, by path."""
+
+    def __init__(self, base: str):
+        super().__init__()
+        self.base = base
+
+    def request(self, method, url, *args, **kwargs):
+        return super().request(method, self.base + url, *args, timeout=10, **kwargs)
 
 
 @pytest.fixture()
-def client(tmp_path, monkeypatch):
-    path = tmp_path / "kestrel.db"
-    seed.seed(str(path))
-    monkeypatch.setenv("KESTREL_DB", str(path))
-    with TestClient(main.app) as c:
+def client(kestrel):  # a real Kestrel Desk process on fresh demo data, from conftest
+    base, path = kestrel
+    with AppClient(base) as c:
         c.db_path = path
         yield c
 

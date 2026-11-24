@@ -217,14 +217,18 @@ function token(): string | null {
 
 export const hasToken = (): boolean => token() !== null;
 
+/** Every API request carries the link's token: reads show customer data and the audit log, so they need it too. */
+function authHeaders(): Record<string, string> {
+  const t = token();
+  return t ? { [TOKEN_HEADER]: t } : {};
+}
+
 async function request<T>(path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = { Accept: "application/json", ...authHeaders() };
   const init: RequestInit = { headers, cache: "no-store" };
   if (body !== undefined) {
     init.method = "POST";
     headers["Content-Type"] = "application/json";
-    const t = token();
-    if (t) headers[TOKEN_HEADER] = t;
     init.body = JSON.stringify(body);
   }
   let response: Response;
@@ -255,20 +259,65 @@ export type EventHandler = (kind: string, data: Record<string, unknown>) => void
 export const EVENT_KINDS = ["started", "message", "tool_call", "tool_result", "agent_finished", "error", "review",
   "done"] as const;
 
-/** Follow a rehearsal's live event stream. Returns a function that stops listening. */
+const KINDS: ReadonlySet<string> = new Set(EVENT_KINDS);
+
+/** Follow a rehearsal's live event stream. Returns a function that stops listening.
+ *  It reads the server sent events with fetch, because EventSource cannot send the token header. Like
+ *  EventSource, a dropped connection is picked up again from the last event received. */
 function subscribe(id: string, on: EventHandler): () => void {
-  const source = new EventSource(`/api/rehearsals/${encodeURIComponent(id)}/events`);
-  const seen = new Set<string>();
-  for (const kind of EVENT_KINDS) {
-    source.addEventListener(kind, (event) => {
-      const message = event as MessageEvent<unknown>;
-      // A dropped connection also fires "error", with no data; EventSource reconnects by itself.
-      if (typeof message.data !== "string" || seen.has(message.lastEventId)) return;
-      seen.add(message.lastEventId);
-      on(kind, JSON.parse(message.data) as Record<string, unknown>);
-    });
-  }
-  return () => source.close();
+  const stop = new AbortController();
+  const url = `/api/rehearsals/${encodeURIComponent(id)}/events`;
+  let last = -1;
+  let finished = false;
+
+  const handle = (block: string) => {
+    let eventId = "";
+    let kind = "";
+    let data = "";
+    for (const line of block.split("\n")) {
+      const colon = line.indexOf(":");
+      if (colon <= 0) continue; // a blank line or a ": keep-alive" comment
+      const value = line.slice(colon + 1).replace(/^ /, "");
+      const name = line.slice(0, colon);
+      if (name === "id") eventId = value;
+      else if (name === "event") kind = value;
+      else if (name === "data") data += value;
+    }
+    const n = Number(eventId);
+    if (!KINDS.has(kind) || !data || !Number.isInteger(n) || n <= last) return; // each event once, in order
+    last = n;
+    finished ||= kind === "done";
+    on(kind, JSON.parse(data) as Record<string, unknown>);
+  };
+
+  void (async () => {
+    for (let attempt = 0; !stop.signal.aborted; attempt++) {
+      try {
+        const headers: Record<string, string> = { Accept: "text/event-stream", ...authHeaders() };
+        if (last >= 0) headers["Last-Event-ID"] = String(last);
+        const response = await fetch(url, { headers, cache: "no-store", signal: stop.signal });
+        if (response.status >= 400 && response.status < 500) return; // unknown rehearsal or no access: stop
+        if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+        let buffer = "";
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break; // the server ends the stream after the run's last event; anything else reconnects
+          attempt = 0;
+          buffer += value;
+          for (let end = buffer.indexOf("\n\n"); end >= 0; end = buffer.indexOf("\n\n")) {
+            handle(buffer.slice(0, end));
+            buffer = buffer.slice(end + 2);
+          }
+        }
+      } catch {
+        if (stop.signal.aborted) return;
+      }
+      if (finished) return;
+      await new Promise((resolve) => window.setTimeout(resolve, Math.min(1000 * 2 ** attempt, 10_000)));
+    }
+  })();
+  return () => stop.abort();
 }
 
 const live = {

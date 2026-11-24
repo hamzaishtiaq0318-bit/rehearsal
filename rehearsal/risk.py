@@ -28,8 +28,17 @@ def money(cents: int) -> str:
 
 
 def money_out(changes: list[RowChange], target: Target) -> list[tuple[RowChange, int]]:
-    return [(c, int(c.after[target.money[c.table]])) for c in changes
-            if c.kind == "added" and c.table in target.money and c.after.get(target.money[c.table])]
+    """Money leaving the business: each new row in a money table, and each increase to an existing one.
+    Only positive amounts count, so a negative row cannot hide a large payment in a total."""
+    out = []
+    for c in changes:
+        column = target.money.get(c.table)
+        if not column or c.kind == "removed":
+            continue
+        cents = int(c.after.get(column) or 0) - (int(c.before.get(column) or 0) if c.kind == "changed" else 0)
+        if cents > 0:
+            out.append((c, cents))
+    return out
 
 
 def assess(changes: list[RowChange], owners: list[Any], failed_calls: int, blocked_calls: int,

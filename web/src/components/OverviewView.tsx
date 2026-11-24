@@ -59,8 +59,9 @@ export function OverviewView() {
               {decided === 0
                 ? "Nothing has been decided yet. Start a conversation and these numbers fill in."
                 : `Of ${decided} decided ${decided === 1 ? "task" : "tasks"}, ${data.applied_automatically} needed nobody, `
-                  + `${data.approved} were approved after a look, and ${data.cancelled} never reached live data.`}
-              {" "}Every number comes from the audit log, so it cannot be quietly edited.
+                  + `${data.approved} ${data.approved === 1 ? "was" : "were"} approved after a look, and `
+                  + `${data.cancelled} never reached live data.`}
+              {" "}Every number comes from the audit log, where an edited entry breaks the hash chain.
             </p>
           </>
         ) : (

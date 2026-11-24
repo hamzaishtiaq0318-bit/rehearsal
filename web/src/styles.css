@@ -1,98 +1,68 @@
-/* Rehearsal console. A calm chat layout: warm paper, ink, a serif for display and a quiet green accent.
-   Red and amber appear only where they mean risk. */
+/* Rehearsal console. Monochrome: near black and white, one sans for everything, a mono for data.
+   Dark is the default. Red and amber appear only where they mean risk. */
 
 :root {
-  --bg: #faf9f5;
-  --surface: #ffffff;
-  --surface-2: #f3f1ea;
-  --surface-3: #ebe8de;
-  --text: #191917;
-  --muted: #65645d;
-  --border: #e6e3d9;
-  --border-strong: #d1cdbf;
-  --brand: #2f6b4f;
-  --brand-tint: #e8f0ea;
-  --primary: #191917;
-  --primary-hover: #2e2d29;
-  --on-primary: #faf9f5;
-  --mark: #191917;
-  --on-mark: #ffffff;
-  --high: #b42318;
-  --high-bg: #fbeae6;
-  --medium: #9a4a0b;
-  --medium-bg: #fbf0df;
-  --good: #2f6b4f;
-  --good-bg: #e8f0ea;
-  --focus: #2f6b4f;
-  --shadow: 0 1px 2px rgb(25 25 23 / 0.05), 0 2px 10px rgb(25 25 23 / 0.04);
-  --shadow-lg: 0 2px 6px rgb(25 25 23 / 0.06), 0 18px 48px rgb(25 25 23 / 0.12);
+  --bg: #0a0a0a;
+  --surface: #111111;
+  --surface-2: #171717;
+  --surface-3: #1f1f1f;
+  --text: #fafafa;
+  --muted: #a3a3a3;
+  --border: #232323;
+  --border-strong: #343434;
+  --brand: #fafafa;
+  --brand-tint: #1a1a1a;
+  --primary: #fafafa;
+  --primary-hover: #e4e4e4;
+  --on-primary: #0a0a0a;
+  --mark: #fafafa;
+  --on-mark: #0a0a0a;
+  --high: #ff7a6e;
+  --high-bg: #2b1311;
+  --medium: #f2b552;
+  --medium-bg: #2a200e;
+  --good: #fafafa;
+  --good-bg: #1a1a1a;
+  --focus: #fafafa;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 24px 60px rgb(0 0 0 / 0.55);
   --radius-sm: 8px;
   --radius: 12px;
-  --radius-lg: 18px;
-  --sidebar: 288px;
+  --radius-lg: 16px;
+  --sidebar: 280px;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
-  --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --serif: var(--font); /* display text uses the same sans, set tighter */
   --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #1a1a18;
-    --surface: #22221f;
-    --surface-2: #2a2a26;
-    --surface-3: #33322d;
-    --text: #f4f2ea;
-    --muted: #a9a69b;
-    --border: #34332e;
-    --border-strong: #47453e;
-    --brand: #5cbf96;
-    --brand-tint: #1f3329;
-    --primary: #f4f2ea;
-    --primary-hover: #ffffff;
-    --on-primary: #1a1a18;
-    --mark: #f4f2ea;
-    --on-mark: #1a1a18;
-    --high: #f0897d;
-    --high-bg: #3b1d19;
-    --medium: #eeb35c;
-    --medium-bg: #382a14;
-    --good: #5cbf96;
-    --good-bg: #1f3329;
-    --focus: #79cfab;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
-    --shadow-lg: 0 18px 48px rgb(0 0 0 / 0.5);
-    color-scheme: dark;
-  }
-}
-
-:root[data-theme="dark"] {
-  --bg: #1a1a18;
-  --surface: #22221f;
-  --surface-2: #2a2a26;
-  --surface-3: #33322d;
-  --text: #f4f2ea;
-  --muted: #a9a69b;
-  --border: #34332e;
-  --border-strong: #47453e;
-  --brand: #5cbf96;
-  --brand-tint: #1f3329;
-  --primary: #f4f2ea;
-  --primary-hover: #ffffff;
-  --on-primary: #1a1a18;
-  --mark: #f4f2ea;
-  --on-mark: #1a1a18;
-  --high: #f0897d;
-  --high-bg: #3b1d19;
-  --medium: #eeb35c;
-  --medium-bg: #382a14;
-  --good: #5cbf96;
-  --good-bg: #1f3329;
-  --focus: #79cfab;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
-  --shadow-lg: 0 18px 48px rgb(0 0 0 / 0.5);
   color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f5f5f5;
+  --surface-3: #ebebeb;
+  --text: #0a0a0a;
+  --muted: #5e5e5e;
+  --border: #e8e8e8;
+  --border-strong: #d4d4d4;
+  --brand: #0a0a0a;
+  --brand-tint: #f2f2f2;
+  --primary: #0a0a0a;
+  --primary-hover: #262626;
+  --on-primary: #ffffff;
+  --mark: #0a0a0a;
+  --on-mark: #ffffff;
+  --high: #c4251a;
+  --high-bg: #fdeceb;
+  --medium: #995a00;
+  --medium-bg: #fdf3e2;
+  --good: #0a0a0a;
+  --good-bg: #f2f2f2;
+  --focus: #0a0a0a;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 2px 10px rgb(0 0 0 / 0.04);
+  --shadow-lg: 0 2px 6px rgb(0 0 0 / 0.06), 0 18px 48px rgb(0 0 0 / 0.1);
+  color-scheme: light;
 }
 
 *,
@@ -111,7 +81,8 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 400 15.5px/1.6 var(--font);
+  font: 400 15px/1.6 var(--font);
+  font-feature-settings: "cv11", "ss03"; /* Inter's straight-sided figures and open shapes */
   transition: background-color 240ms ease, color 240ms ease;
 }
 
@@ -251,13 +222,26 @@ code {
   padding: 10px 20px;
   font-size: 14px;
   border-bottom: 1px solid var(--border);
-  background: var(--medium-bg);
+  background: var(--surface-2);
+  color: var(--muted);
   margin: 0;
 }
 
+.banner a {
+  color: var(--text);
+}
+
 .banner svg {
-  color: var(--medium);
   flex: none;
+}
+
+.banner[role="alert"] {
+  background: var(--high-bg);
+  color: var(--text);
+}
+
+.banner[role="alert"] svg {
+  color: var(--high);
 }
 
 /* ---------------------------------------------------------------- app frame */
@@ -301,7 +285,7 @@ code {
   flex-direction: column;
   gap: 4px;
   padding: 14px 12px;
-  background: var(--surface-2);
+  background: var(--surface);
   border-right: 1px solid var(--border);
   overflow: hidden;
 }
@@ -319,10 +303,9 @@ code {
   gap: 10px;
   color: var(--text);
   text-decoration: none;
-  font-family: var(--serif);
   font-weight: 600;
-  font-size: 21px;
-  letter-spacing: -0.02em;
+  font-size: 18px;
+  letter-spacing: -0.03em;
 }
 
 .new-chat {
@@ -390,8 +373,8 @@ code {
 }
 
 .history-item[aria-current="page"] {
-  background: var(--surface);
-  box-shadow: var(--shadow);
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
 .history-text {
@@ -533,12 +516,19 @@ button.foot-link {
   height: 44px;
 }
 
+.hello-eyebrow {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 .hello h1 {
-  font-family: var(--serif);
-  font-size: clamp(30px, 4.2vw, 42px);
-  letter-spacing: -0.02em;
-  line-height: 1.12;
-  max-width: 18ch;
+  font-size: clamp(30px, 4.4vw, 46px);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  max-width: 16ch;
 }
 
 .hello p {
@@ -974,8 +964,8 @@ button.foot-link {
 }
 
 .step[data-kind="write"] .step-icon {
-  background: var(--medium-bg);
-  color: var(--medium);
+  background: var(--text);
+  color: var(--bg);
 }
 
 .step[data-kind="blocked"] .step-icon,
@@ -1003,14 +993,16 @@ button.foot-link {
   display: inline-flex;
   padding: 0 8px;
   border-radius: 999px;
-  background: var(--medium-bg);
-  color: var(--medium);
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--muted);
   font-size: 11.5px;
   font-weight: 600;
   line-height: 20px;
 }
 
 .tag.risk {
+  border-color: transparent;
   background: var(--high-bg);
   color: var(--high);
 }
@@ -1221,8 +1213,8 @@ button.foot-link {
   white-space: nowrap;
 }
 
-.overview-row {
-  margin-top: 12px;
+.facts-row.overview-row {
+  margin-top: 12px; /* beats the plain .facts-row margin further down */
 }
 
 .overview-row.five {
@@ -2214,4 +2206,44 @@ dialog h2 {
     font-size: 10.5px;
     overflow-wrap: anywhere;
   }
+}
+
+/* ---------------------------------------------------------------- locked console and crash screen */
+
+.locked,
+.crash {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+  max-width: 560px;
+  margin: 12vh auto 0;
+  padding: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.locked-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.locked h1,
+.crash h1 {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.locked p,
+.crash p {
+  color: var(--muted);
+}
+
+.crash {
+  margin: 20vh auto 0;
 }

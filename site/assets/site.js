@@ -1,26 +1,25 @@
 // Rehearsal website: the theme choice, the film player and the copy buttons.
-// Loaded in <head> so a saved theme applies before the first paint. Without JavaScript the page
-// follows the system theme and the buttons stay hidden, so nothing is broken.
+// Loaded in <head> so a saved theme applies before the first paint. The site is dark unless the visitor
+// picks light. Without JavaScript the page stays dark and the buttons stay hidden, so nothing is broken.
 (() => {
   const root = document.documentElement;
   const KEY = "rehearsal-theme";
-  const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
   root.classList.add("js");
 
-  const current = () => root.dataset.theme || (systemDark.matches ? "dark" : "light");
+  const current = () => (root.dataset.theme === "light" ? "light" : "dark");
 
   function apply(theme) {
     if (theme !== "light" && theme !== "dark") return;
     root.dataset.theme = theme;
     for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
-      meta.content = theme === "dark" ? "#1a1a18" : "#faf9f5";
+      meta.content = theme === "dark" ? "#0a0a0a" : "#ffffff";
     }
   }
 
   try {
     apply(localStorage.getItem(KEY));
   } catch {
-    /* storage can be blocked; the system theme is used instead */
+    /* storage can be blocked; the dark default is used instead */
   }
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -38,7 +37,6 @@
       const label = () =>
         toggle.setAttribute("aria-label", current() === "dark" ? "Switch to light theme" : "Switch to dark theme");
       label();
-      systemDark.addEventListener("change", label);
       toggle.addEventListener("click", () => {
         const next = current() === "dark" ? "light" : "dark";
         apply(next);

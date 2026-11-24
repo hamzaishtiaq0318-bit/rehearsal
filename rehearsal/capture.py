@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 import tempfile
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -97,6 +98,7 @@ async def capture() -> dict:
     finally:
         await console.aclose()
         await engine.close()
+        shutil.rmtree(tmp, ignore_errors=True)  # the scratch copies of the store
     return {"captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "status": status,
             "tickets": tickets, "ticket_details": details, "audit": audit, "tamper": tamper, "scenarios": scenarios}
 

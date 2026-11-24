@@ -1,6 +1,7 @@
 """The console API end to end over HTTP, with a scripted model and a real engine."""
 import asyncio
 import json
+import os
 from dataclasses import replace
 
 import httpx
@@ -260,11 +261,13 @@ async def test_high_risk_needs_two_people_each_with_their_own_link(engine):
                             reviewers={"Amira": "amira-secret", "Ben": "ben-secret"})
     as_ = lambda t: {server.TOKEN_HEADER: t}  # noqa: E731
     async with app.router.lifespan_context(app):
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-            rid = (await client.post("/api/rehearsals", json={"ticket_id": 1006, "mode": "simulated"},
-                                     headers=as_("launch"))).json()["id"]
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test",
+                                     headers=as_("launch")) as client:
+            rid = (await client.post("/api/rehearsals", json={"ticket_id": 1006, "mode": "simulated"})).json()["id"]
             await follow(client, rid)
             url = f"/api/rehearsals/{rid}/approve"
+            # A reviewer's link can read the review it is asked to decide on.
+            assert (await client.get(f"/api/rehearsals/{rid}", headers=as_("ben-secret"))).status_code == 200
             # The shared console link cannot approve high risk work, whatever name it types.
             assert (await client.post(url, json={"reviewer": "Amira"}, headers=as_("launch"))).status_code == 403
             first = (await client.post(url, json={"reviewer": "Ben"}, headers=as_("amira-secret"))).json()
@@ -339,9 +342,46 @@ async def test_decision_input_is_validated(api):
     assert (await api.post("/api/rehearsals/nope/approve", json={})).status_code == 404
 
 
-async def test_concurrency_cap(api, monkeypatch):
-    monkeypatch.setattr(server, "MAX_ACTIVE", 0)
+async def test_concurrency_cap(api):
+    api.console.max_active = 0
     assert (await api.post("/api/rehearsals", json={"ticket_id": 1002})).status_code == 429
+
+
+async def test_requests_sent_together_cannot_pass_the_cap(api):
+    api.console.max_active = 1  # starting a rehearsal takes seconds; the place is held from the first check
+    sent = await asyncio.gather(*(api.post("/api/rehearsals", json={"ticket_id": 1002}) for _ in range(3)))
+    assert sorted(r.status_code for r in sent) == [201, 429, 429]
+    await follow(api, next(r for r in sent if r.status_code == 201).json()["id"])
+
+
+async def test_a_viewer_cannot_miss_an_event_that_lands_before_it_waits():
+    run = server.Run(None, "agent", "model", "title", "request", None)
+    run.emit("started", {})
+    await asyncio.wait_for(run.wait(0, 15), timeout=1)  # returns at once: an event it has not sent is waiting
+
+
+def test_settings_in_the_env_file_apply_to_the_server(tmp_path, monkeypatch):
+    names = ("REHEARSAL_PUBLIC_DEMO", "REHEARSAL_TOKEN")
+    env = tmp_path / ".env"
+    env.write_text("REHEARSAL_PUBLIC_DEMO=1\nREHEARSAL_TOKEN=from-the-file\n", encoding="utf-8")
+    for name in names:
+        monkeypatch.delenv(name, raising=False)
+    real = server.config_mod.load_env
+    monkeypatch.setattr(server.config_mod, "load_env", lambda: real(env))
+    try:
+        app = server.create_app(allowed_hosts=["test"], reviewers={})
+        assert app.state.public_demo is True and app.state.token == "from-the-file"
+    finally:
+        for name in names:
+            os.environ.pop(name, None)
+
+
+async def test_reads_need_the_link_too(api):
+    del api.headers[server.TOKEN_HEADER]
+    for path in ("/api/tickets", "/api/tickets/1002", "/api/rehearsals", "/api/audit", "/api/overview",
+                 "/api/audit/tamper-check"):
+        assert (await api.get(path)).status_code == 401, path  # customer data and the audit log
+    assert (await api.get("/api/status")).status_code == 200
 
 
 async def test_reset_restores_fresh_demo_data(api):

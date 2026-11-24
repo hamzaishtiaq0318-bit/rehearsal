@@ -10,7 +10,7 @@ import os
 import re
 import secrets
 import tempfile
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Literal
@@ -38,10 +38,13 @@ from .scenarios import CompromisedAgent
 ROOT = Path(__file__).resolve().parents[1]
 WEB_DIST = ROOT / "web" / "dist"
 RECORDINGS = ROOT / "demo" / "recordings"
-MAX_ACTIVE = int(os.environ.get("REHEARSAL_MAX_ACTIVE", "3"))
 SIMULATION_TICKET = 1006
 TOKEN_HEADER = "X-Rehearsal-Token"
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
+WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
+# API paths anyone on an allowed host may read. Everything else under /api/ shows customer data or the
+# audit log, so it needs the launch link or a reviewer's link.
+OPEN_READS = ("/api/status", "/api/docs", "/api/docs/oauth2-redirect", "/api/openapi.json")
 NTFY_URL = "https://ntfy.sh/"
 # ntfy topics are public by name, so a long random one is the only thing keeping alerts private.
 NTFY_TOPIC = re.compile(r"[A-Za-z0-9_-]{8,64}")
@@ -75,8 +78,12 @@ class Run:
         self.events.append({"id": len(self.events), "kind": kind, "data": data})
         self._changed.set()
 
-    async def wait(self, timeout: float) -> None:
+    async def wait(self, seen: int, timeout: float) -> None:
+        """Wait until there are more than `seen` events, the run is done, or the timeout passes.
+        Checking after the clear means an event that landed just before cannot be missed, whoever cleared."""
         self._changed.clear()
+        if len(self.events) > seen or self.done:
+            return
         try:
             await asyncio.wait_for(self._changed.wait(), timeout)
         except asyncio.TimeoutError:
@@ -169,7 +176,9 @@ class Console:
         # In a public demo anyone can type, so free text instructions are turned off: every request
         # must name a ticket and uses the server's own wording.
         self.public_demo = public_demo
+        self.max_active = int(os.environ.get("REHEARSAL_MAX_ACTIVE", "3"))
         self.runs: dict[str, Run] = {}
+        self._starting = 0  # rehearsals between the capacity check and their run being listed
         # Scripted agents that act out an attack, by ticket: (name of the attack, label shown, agent factory).
         self.simulations: dict[int, tuple[str, str, Callable[[], Any]]] = {
             SIMULATION_TICKET: ("A polite billing notice", SIMULATION_LABEL,
@@ -183,7 +192,19 @@ class Console:
         await self._http.aclose()
 
     def active(self) -> int:
-        return sum(1 for r in self.runs.values() if not r.done)
+        return self._starting + sum(1 for r in self.runs.values() if not r.done)
+
+    @contextmanager
+    def slot(self):
+        """Hold a place among the running rehearsals while one starts. Starting takes seconds (a copy of the
+        app and its tool server), so without this, requests sent together would all pass the check."""
+        if self.active() >= self.max_active:
+            raise HTTPException(429, f"{self.max_active} rehearsals are already running. Try again in a moment.")
+        self._starting += 1
+        try:
+            yield
+        finally:
+            self._starting -= 1
 
     async def live_get(self, path: str) -> Any:
         r = await self._http.get(self.engine.live_app.base_url + path)
@@ -199,8 +220,10 @@ class Console:
         return run
 
     async def start(self, req: StartRequest) -> Run:
-        if self.active() >= MAX_ACTIVE:
-            raise HTTPException(429, f"{MAX_ACTIVE} rehearsals are already running. Try again in a moment.")
+        with self.slot():
+            return await self._start(req)
+
+    async def _start(self, req: StartRequest) -> Run:
         if self.public_demo:
             if req.ticket_id is None:
                 raise HTTPException(403, "The public demo only takes requests about a ticket. Mention a ticket number.")
@@ -271,15 +294,15 @@ class Console:
             raise HTTPException(409, "Only a live agent can redo the work. Recorded runs and simulations are fixed.")
         if not run.done or run.rehearsal.state != State.READY:
             raise HTTPException(409, "Only a proposal that is waiting for a decision can be sent back")
-        if self.active() >= MAX_ACTIVE:
-            raise HTTPException(429, f"{MAX_ACTIVE} rehearsals are already running. Try again in a moment.")
-        await run.rehearsal.reject(by=revision.reviewer, reason=f"Sent back for changes: {revision.feedback}")
-        # The feedback is the person's own words, so ids in it count as part of the request.
-        task = (f"{run.rehearsal.task}\nA person reviewed your earlier attempt and did not apply it. "
-                f"They ask for this change: {revision.feedback}")
-        rehearsal = await self.engine.rehearse(task, actor="Live model")
-        again = Run(rehearsal, "agent", "Live model", run.title, f"Change requested: {revision.feedback}", run.ticket_id)
-        self.runs[rehearsal.id] = again
+        with self.slot():
+            await run.rehearsal.reject(by=revision.reviewer, reason=f"Sent back for changes: {revision.feedback}")
+            # The feedback is the person's own words, so ids in it count as part of the request.
+            task = (f"{run.rehearsal.task}\nA person reviewed your earlier attempt and did not apply it. "
+                    f"They ask for this change: {revision.feedback}")
+            rehearsal = await self.engine.rehearse(task, actor="Live model")
+            again = Run(rehearsal, "agent", "Live model", run.title, f"Change requested: {revision.feedback}",
+                        run.ticket_id)
+            self.runs[rehearsal.id] = again
         again.emit("started", {"task": task, "request": again.request, "mode": "agent", "model": again.model})
         again.task = asyncio.create_task(self._drive(again, self.client, task))
         return again
@@ -357,11 +380,14 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
                public_demo: bool | None = None, reviewers: dict[str, str] | None = None) -> FastAPI:
     """Build the app. Tests pass a ready Console; production builds one in the lifespan.
 
-    Every write needs the launch token (like Jupyter) unless public demo mode is switched on, and only
-    requests addressed to an allowed host are served, which stops DNS rebinding attacks from a web page.
-    Each named reviewer can also have their own token (name -> token). Two person approval trusts only
-    those: the approver's identity comes from the token they hold, never from a name typed in a request.
+    Every API request needs the launch token (like Jupyter), except a few open reads such as /api/status and
+    everything in public demo mode, and only requests addressed to an allowed host are served, which stops
+    DNS rebinding attacks from a web page. Each named reviewer can also have their own token (name -> token).
+    Two person approval trusts only those: the approver's identity comes from the token they hold, never from
+    a name typed in a request.
     """
+    if console is None:
+        config_mod.load_env()  # before anything below reads a setting, so settings in .env apply too
     if public_demo is None:
         public_demo = os.environ.get("REHEARSAL_PUBLIC_DEMO") == "1"
     token = token or os.environ.get("REHEARSAL_TOKEN") or secrets.token_urlsafe(24)
@@ -378,7 +404,6 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
             app.state.console = console
             yield
             return
-        config_mod.load_env()
         guard = PromptGuard()
         engine = await Engine(config_mod.load(), guard=guard).start()
         try:
@@ -404,17 +429,20 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
     @app.middleware("http")
     async def guard_requests(request: Request, call_next):
         request.state.reviewer = None  # set only when the request carries a named reviewer's own token
-        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        path = request.url.path
+        writes = request.method in WRITE_METHODS
+        if writes or (path.startswith("/api/") and path not in OPEN_READS):
             # JSON only: an HTML form on another site cannot send this content type without a CORS preflight.
-            if not request.headers.get("content-type", "").startswith("application/json"):
+            if writes and not request.headers.get("content-type", "").startswith("application/json"):
                 return JSONResponse({"detail": "Send JSON with Content-Type: application/json"}, status_code=415)
             sent = request.headers.get(TOKEN_HEADER, "")
             # Compare against every token, so the time taken does not reveal which one nearly matched.
             matches = [name for name, t in reviewers.items() if secrets.compare_digest(sent, t)]
             launch = secrets.compare_digest(sent, token)
             if matches and not launch:
-                # A reviewer's own link may decide on a review and nothing else: no reset, reload, pause or new runs.
-                if not REVIEWER_ROUTE.fullmatch(request.url.path):
+                # A reviewer's own link may read, and decide on a review, and nothing else: no reset, reload,
+                # pause or new runs.
+                if writes and not REVIEWER_ROUTE.fullmatch(path):
                     return JSONResponse({"detail": "A reviewer link can only approve, cancel, undo or send back a "
                                                    "review. Use the console link for anything else."}, status_code=403)
                 request.state.reviewer = matches[0]
@@ -447,7 +475,7 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
             "recordings": sorted(int(p.stem.split("-")[1]) for p in RECORDINGS.glob("ticket-*.json")),
             "simulation_ticket": SIMULATION_TICKET,
             "simulations": [{"ticket_id": t, "name": name} for t, (name, _, _) in sorted(c.simulations.items())],
-            "active": c.active(), "max_active": MAX_ACTIVE,
+            "active": c.active(), "max_active": c.max_active,
         }
 
     @app.get("/api/tickets")
@@ -506,7 +534,7 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
                     return
                 if await request.is_disconnected():
                     return
-                await run.wait(15)
+                await run.wait(sent, 15)
                 if sent >= len(run.events):
                     yield ": keep-alive\n\n"
 
@@ -560,7 +588,8 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
     @app.get("/api/overview")
     async def overview(request: Request) -> dict:
         """The protection dashboard, computed from the audit log."""
-        return summarize(con(request).engine.audit.entries())
+        log = con(request).engine.audit
+        return summarize(log.entries(), log.key)
 
     @app.get("/api/audit/tamper-check")
     async def tamper_check(request: Request) -> dict:
@@ -609,22 +638,21 @@ def create_app(console: Console | None = None, *, token: str | None = None, allo
     return app
 
 
-app = create_app()
-
-
 def main() -> None:
     import uvicorn
 
+    app = create_app()  # reads .env first, so every setting below can live there too
     host = os.environ.get("REHEARSAL_HOST", "127.0.0.1")
     port = int(os.environ.get("REHEARSAL_PORT", os.environ.get("PORT", "8000")))
+    shown = "127.0.0.1" if host in ("0.0.0.0", "::", "") else f"[{host}]" if ":" in host else host
     if app.state.public_demo:
         print("PUBLIC DEMO MODE: anyone who can reach this server can approve changes to the demo data.")
     else:
         print()
-        print(f"  Rehearsal console: http://127.0.0.1:{port}/?token={app.state.token}")
-        print("  The token in this link authorises approvals. Do not share it.")
+        print(f"  Rehearsal console: http://{shown}:{port}/?token={app.state.token}")
+        print("  The token in this link opens the console and authorises approvals. Do not share it.")
         for name, reviewer_token in app.state.reviewers.items():
-            print(f"  Reviewer link for {name}: http://127.0.0.1:{port}/?token={reviewer_token}  (give it to {name} only)")
+            print(f"  Reviewer link for {name}: http://{shown}:{port}/?token={reviewer_token}  (give it to {name} only)")
         if config_mod.load().trust.second_approval == "high" and len(app.state.reviewers) < 2:
             print("  second_approval is on, but REHEARSAL_REVIEWERS names fewer than two people, so high risk "
                   "changes cannot be approved.")

@@ -20,6 +20,7 @@ from contextlib import closing
 from pathlib import Path
 
 from . import config
+from .apps import without_our_secrets
 from .catalog import READ_METHODS, routes_from_server
 
 MONEY_TABLE = re.compile(r"refund|credit|payout|payment|reimburs|compensat|disburs", re.IGNORECASE)
@@ -146,7 +147,7 @@ def init(app_dir: Path, out: Path, database: Path | None = None, port: int = 820
                 raise InitError("No seed.py to build a sample database. Pass --database with a copy of the app's database.")
             database = Path(tmp) / "sample.db"
             subprocess.run([sys.executable, "seed.py", str(database)], cwd=app_dir, check=True, capture_output=True,
-                           env={**os.environ, database_env: str(database)}, stdin=subprocess.DEVNULL)
+                           env={**without_our_secrets(), database_env: str(database)}, stdin=subprocess.DEVNULL)
         data = decide(_schema(database))
     name = " ".join(w.capitalize() for w in app_dir.name.replace("-", "_").split("_"))
     base = out.resolve().parent

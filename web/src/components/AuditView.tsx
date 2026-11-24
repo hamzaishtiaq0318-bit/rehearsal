@@ -102,7 +102,7 @@ export function AuditView({ publicDemo, onReset }: { publicDemo: boolean; onRese
           )}
         </div>
         <p className="hint spaced-bottom">
-          Each entry stores the hash of the one before it, so editing or deleting any past entry breaks the chain.{" "}
+          Each entry stores the hash of the one before it, so editing an entry, or removing one from the middle, breaks the chain.{" "}
           <button type="button" className="text-button" onClick={checkTamper}>See it catch an edit</button>
         </p>
         {tamper && tamper.edited !== null && tamper.edited !== undefined && (

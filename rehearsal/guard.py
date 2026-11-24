@@ -5,6 +5,7 @@ the gate is the human review of the rehearsal diff, which catches harm however i
 """
 from __future__ import annotations
 
+import asyncio
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -41,8 +42,10 @@ def strings_in(value: Any) -> list[str]:
 
 class PromptGuard:
     def __init__(self, transport: httpx.AsyncBaseTransport | None = None):
-        # Offline mode (OLLAMA_MODEL) promises nothing leaves the machine, and this scan calls Groq.
-        self.key = None if os.environ.get("OLLAMA_MODEL") else os.environ.get("GROQ_API_KEY")
+        # The scan sends the text of tool results (customer messages included) to Groq. Offline mode
+        # (OLLAMA_MODEL) promises nothing leaves the machine, and REHEARSAL_PROMPT_GUARD=0 switches it off.
+        off = os.environ.get("OLLAMA_MODEL") or os.environ.get("REHEARSAL_PROMPT_GUARD") == "0"
+        self.key = None if off else os.environ.get("GROQ_API_KEY")
         self._http = httpx.AsyncClient(timeout=15, transport=transport)
 
     @property
@@ -66,9 +69,10 @@ class PromptGuard:
         """The highest scoring string in a tool result, or None when nothing could be scored."""
         if not self.available:
             return None
-        best: Detection | None = None
-        for text in strings_in(items):
-            score = await self.score(text)
-            if score is not None and (best is None or score > best.score):
-                best = Detection(score, text[:280])
-        return best
+        texts = strings_in(items)
+        scores = await asyncio.gather(*(self.score(t) for t in texts))  # one round trip, not one per string
+        scored = [(s, t) for s, t in zip(scores, texts) if s is not None]
+        if not scored:
+            return None
+        score, text = max(scored, key=lambda p: p[0])
+        return Detection(score, text[:280])

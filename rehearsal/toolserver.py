@@ -111,6 +111,9 @@ class ToolServer:
                 res = await self.session.call_tool(name, args)
         except TimeoutError:
             return CallResult(False, f"{name} timed out after {self.timeout:.0f} seconds")
+        except Exception as e:  # noqa: BLE001 - the server process stopped or its connection broke
+            return CallResult(False, f"{name} could not be called because the tool server stopped "
+                                     f"({type(e).__name__})")
         texts = [c.text for c in res.content if getattr(c, "type", "") == "text"]
         if res.isError:
             message = " ".join(texts).replace(f"Error executing tool {name}: ", "").strip()

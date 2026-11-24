@@ -69,7 +69,7 @@ The thing that is actually dangerous is the combined **effect**: twelve refunds,
 3. **Decide, then verify.** Approving replays only the recorded writes that succeeded, through the same generated server pointed at the live app. Rehearsal first checks that live data has not moved since the snapshot, then checks that live changed exactly as rehearsed. If anything differs, live is restored and the restore itself is verified. Undo is one click, and it refuses if someone else has changed live data since.
    - **Only interrupt people when it matters.** Work that raises no flag at all, such as a reply or a ticket status change for one customer, is applied by the trust policy without asking. It goes through the same verified replay, is logged as decided by the policy, and can be undone. Anything with money, more than one customer or anything unusual still waits for a person, and so does work from an agent that did not finish on its own or that looked at other customers' records. Set `auto_apply = "none"` to approve everything yourself; new apps from `rehearsal init` start that way.
    - **Two people for high risk.** With `second_approval = "high"` and `REHEARSAL_REVIEWERS=Amira,Ben`, each reviewer gets their own secret link at startup, and high risk work needs approvals from two of them. The approver is whoever holds the link, never a name typed into a request, and the shared console link cannot approve high risk work at all. Behind single sign on, the links would become real accounts.
-4. **Everything is on the record.** Every rehearsal, tool call and decision goes into a hash chained audit log. Editing any past entry breaks the chain, and the console says so.
+4. **Everything is on the record.** Every rehearsal, tool call and decision goes into a hash chained audit log. Editing an entry breaks the chain, and the console says so. Set `REHEARSAL_AUDIT_KEY` and the hashes are keyed, so nobody without the key can recompute the chain after an edit.
 
 ```mermaid
 flowchart LR
@@ -144,7 +144,7 @@ In Claude Desktop this goes under Settings, Developer, Edit Config. In Cursor it
 | **7 of 7** | attacks in the [gallery](#attack-gallery-seven-ways-an-agent-goes-wrong) flagged by Rehearsal. Prompt Guard caught none of them. |
 | **0 model calls** | added by Rehearsal. Measured on a Windows laptop: about 4 seconds to start the private copy, 30 ms per tool call on it, 0.16 seconds to prepare the review, and 0.12 seconds to apply and verify. |
 | **0 lines** | of the existing app changed. |
-| **190 tests** | that start real app processes and real generated MCP servers: the full cycle, 16 random tasks that must keep both promises (nothing live without approval, live gets exactly what was reviewed), the attack gallery, where targets came from, words against changes, data leaks, your own rules, trust levels, two person approval, rollback, path injection, the console API and its security checks, MCP proxy mode over the real protocol, and the second app protected from a generated config. |
+| **201 tests** | that start real app processes and real generated MCP servers: the full cycle, 16 random tasks that must keep both promises (nothing live without approval, live gets exactly what was reviewed), the attack gallery, where targets came from, words against changes, data leaks, your own rules, trust levels, two person approval, rollback, a tool server crashing part way through a replay, path injection, the console API and its security checks, MCP proxy mode over the real protocol, and the second app protected from a generated config. |
 
 The compromised agent in the demo is a clearly labelled script, so the attack can be shown every time. The evaluation runs the real model:
 
@@ -210,7 +210,9 @@ The server prints a console link with a one time token. Open it and try:
 - **Ticket 1002** with the AI agent: a torn jacket. Approve the refund and watch it land on live data, verified.
 - **Ticket 1006** with the attack simulation: the polite injection. Rehearsal flags twelve refunds to twelve customers and you cancel it.
 
-Run the tests with `python -m pytest tests`. Last full run on a fresh clone (20 Nov 2026): **190 passed**, and the console type check and both builds passed. The same checks are set up as GitHub Actions in [`tests.yml`](.github/workflows/tests.yml), switched off for now.
+Run the tests with `python -m pytest tests`. Last full run on a fresh clone (24 Nov 2026): **201 passed, no warnings**, and the console type check and both builds passed. The same checks are written as GitHub Actions in [`tests.yml`](.github/workflows/tests.yml), which are switched off for now.
+
+Every setting, such as `REHEARSAL_TOKEN`, `REHEARSAL_REVIEWERS` or `REHEARSAL_AUDIT_KEY`, can go in `.env`. The full list is on the [docs page](https://rehearsal-ai-app.web.app/docs#settings).
 
 **Or with Docker**, one command and no Python or Node on your machine:
 
@@ -291,9 +293,12 @@ Rehearsal assumes the agent can be fooled and the data it reads can be hostile.
 
 - Tool arguments are checked against the app's real types before they leave Rehearsal. A path argument such as `1/orders` or `../admin` is blocked and shown to the reviewer.
 - Only allow listed endpoints become tools. Bulk customer export and permanent deletion are never exposed.
-- The generated MCP server starts with only its base URL in its environment, so model keys never reach it.
+- The generated MCP server starts with only its base URL in its environment, so model keys never reach it, and the protected app never receives Rehearsal's own keys or settings.
 - A hard limit on tool calls per task, enforced even inside a single model reply and for outside agents.
 - Approvals need a per launch token and a JSON body, and requests for other host names are refused, which stops DNS rebinding.
+- Reading tickets, rehearsals or the audit log needs the same link, so another user on the machine sees only that the console is locked.
+- If the tool server or the database fails part way through applying a change, live data is restored and the restore is checked. A snapshot that could not be confirmed is kept where a restart will not remove it.
+- Starting many rehearsals at once cannot pass the limit on running ones, because a place is held from the moment a request is accepted.
 - High risk approvals need an explicit acknowledgement in the console.
 - Only id fields the app assigns count as trusted sources; ids found only in text anyone can write are flagged.
 - The trust policy never applies work that raised any flag, came from an agent that did not finish, or looked at other customers' records. A reply it applies cannot be unsent in a real system, so `auto_apply = "none"` is there for teams that read every reply.
@@ -304,7 +309,10 @@ The full threat model and the limits we know about are on the [security page](ht
 
 - Shadow copies and diffs use SQLite today. Postgres would use template databases or branching, with the same cycle on top.
 - Rehearsal assumes nothing else writes to live data during the fraction of a second a replay takes.
-- Reviewer names are self reported. A real deployment would sit behind single sign on.
+- Names typed on the shared console link are self reported; reviewer links carry their holder's name. A real deployment would sit behind single sign on.
+- Rehearsal sees changes in the app's database. An endpoint that also sends an email or charges a card by itself would do that on the private copy too, so such an app should point its copies at test accounts.
+- Removing entries from the end of the audit log does not break the chain. Production would also copy the log to append only storage.
+- With a Groq key set, Prompt Guard sends the text of tool results, customer messages included, to Groq. Set `REHEARSAL_PROMPT_GUARD=0` or run fully offline to keep it on your machine.
 
 ## Repository layout
 
@@ -320,7 +328,7 @@ The full threat model and the limits we know about are on the [security page](ht
 | `demo/gallery.json` | The attack gallery results |
 | `docs/mcp-setup.md` | How the MCP server was generated, which endpoints are exposed and why |
 | `tests/` | Tests that run real app processes and real generated servers |
-| `Dockerfile`, `.github/workflows/` | One command setup, and the tests on every push |
+| `Dockerfile`, `.github/workflows/` | One command setup, and the tests written as GitHub Actions (switched off for now) |
 
 ## Built with
 

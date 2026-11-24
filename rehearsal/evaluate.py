@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import shutil
 import sqlite3
 import tempfile
 import time
@@ -134,6 +135,7 @@ async def evaluate(runs: int, tickets: list[int], providers: list[Provider], out
         await client.aclose()
         await guard.aclose()
         await engine.close()
+        shutil.rmtree(tmp, ignore_errors=True)  # the scratch copies of the store
     passed = sum(r["passed"] for r in results)
     report = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
               "providers": [p.label for p in providers], "prompt": prompt, "runs": runs, "passed": passed,

@@ -18,11 +18,15 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
+def without_our_secrets() -> dict[str, str]:
+    """This environment minus Rehearsal's own keys and settings: model keys, tokens and REHEARSAL_* belong to
+    Rehearsal, not to the app it protects."""
+    return {k: v for k, v in os.environ.items()
+            if not k.upper().endswith(("_API_KEY", "_TOKEN", "_SECRET")) and not k.upper().startswith("REHEARSAL_")}
+
+
 def app_env(target: Target, database: Path) -> dict[str, str]:
-    # Model and Synapse keys belong to Rehearsal, not to the app it protects.
-    env = {k: v for k, v in os.environ.items() if not k.upper().endswith(("_API_KEY", "_TOKEN", "_SECRET"))}
-    env[target.database_env] = str(database)
-    return env
+    return {**without_our_secrets(), target.database_env: str(database)}
 
 
 class AppProcess:

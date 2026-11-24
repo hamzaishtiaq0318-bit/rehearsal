@@ -71,3 +71,18 @@ async def test_generated_server_never_sees_our_secrets(tmp_path, monkeypatch):
         result = await server.call("env", {})
     assert result.items[0] == {"groq": None, "base": "http://127.0.0.1:1"}
     assert os.environ["GROQ_API_KEY"] == "should-not-leak"
+
+
+def test_the_protected_app_never_gets_rehearsals_keys_or_settings(monkeypatch):
+    from pathlib import Path
+
+    from rehearsal import config
+    from rehearsal.apps import app_env
+
+    for name, value in [("GROQ_API_KEY", "gsk-secret"), ("REHEARSAL_TOKEN", "launch"),
+                        ("REHEARSAL_AUDIT_KEY", "audit-key"), ("REHEARSAL_NTFY_TOPIC", "alerts"),
+                        ("APP_SETTING", "kept")]:
+        monkeypatch.setenv(name, value)
+    env = app_env(config.load().target, Path("x.db"))
+    assert not {"GROQ_API_KEY", "REHEARSAL_TOKEN", "REHEARSAL_AUDIT_KEY", "REHEARSAL_NTFY_TOPIC"} & set(env)
+    assert env["APP_SETTING"] == "kept" and env["KESTREL_DB"] == "x.db"

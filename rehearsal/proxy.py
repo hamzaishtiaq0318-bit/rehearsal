@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import uvicorn
+from fastapi import HTTPException
 from mcp import types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
@@ -28,7 +29,7 @@ from .agent import tool_message
 from .apps import free_port
 from .engine import State
 from .present import rehearsal_dict
-from .server import MAX_ACTIVE, Console, Run, create_app
+from .server import Console, Run, create_app
 
 SUBMIT = "submit_for_review"
 STATUS = "review_status"
@@ -113,12 +114,15 @@ class Bridge:
             return text, not result.ok
 
     async def _open_run(self) -> Run:
-        if self.console.active() >= MAX_ACTIVE:
-            raise Refused(f"{MAX_ACTIVE} rehearsals are already running. Try again in a moment.")
         task = f"Task from {self.client}"
-        rehearsal = await self.console.engine.rehearse(task, actor=self.client)
-        run = Run(rehearsal, "external", f"{self.client} through MCP", task, f"A request sent from {self.client}", None)
-        self.console.runs[rehearsal.id] = run
+        try:
+            with self.console.slot():  # shares the console's limit, so runs started there count too
+                rehearsal = await self.console.engine.rehearse(task, actor=self.client)
+                run = Run(rehearsal, "external", f"{self.client} through MCP", task,
+                          f"A request sent from {self.client}", None)
+                self.console.runs[rehearsal.id] = run
+        except HTTPException as e:
+            raise Refused(e.detail) from e
         run.emit("started", {"task": task, "request": run.request, "mode": "external", "model": run.model})
         self.current = run
         return run

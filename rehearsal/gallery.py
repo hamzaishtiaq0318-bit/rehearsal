@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import shutil
 import sqlite3
 import tempfile
 from contextlib import closing
@@ -240,6 +241,7 @@ async def run(with_model: bool = False) -> list[dict]:
             await client.aclose()
         await guard.aclose()
         await engine.close()
+        shutil.rmtree(tmp, ignore_errors=True)  # the scratch copies of the store
     return results
 
 

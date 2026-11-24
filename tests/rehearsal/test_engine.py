@@ -7,6 +7,8 @@ import sqlite3
 import pytest
 import requests
 
+from rehearsal import audit
+from rehearsal.audit import AuditLog
 from rehearsal.engine import InvalidState, State, row_id
 from rehearsal.toolserver import CallResult
 
@@ -105,7 +107,8 @@ async def test_undo_restores_live_and_only_once(engine):
     await r.finish()
     assert (await r.approve(by="reviewer")).state == State.APPLIED
     assert live(engine, "SELECT credit_cents FROM customers WHERE id = 4") == [(3240,)]
-    assert (await r.undo(by="reviewer")).state == State.UNDONE
+    undone = await r.undo(by="reviewer")
+    assert undone.state == State.UNDONE and undone.verified  # checked against the snapshot, like a rollback
     assert live(engine, "SELECT credit_cents FROM customers WHERE id = 4") == [(0,)]
     with pytest.raises(InvalidState):
         await r.undo(by="reviewer")
@@ -147,6 +150,44 @@ async def test_replay_failure_part_way_restores_live(engine, monkeypatch):
     assert live(engine, "SELECT COUNT(*) FROM refunds WHERE order_id = 5003") == [(0,)]
 
 
+async def test_a_crash_part_way_through_the_replay_restores_live(engine, monkeypatch):
+    r = await engine.rehearse("Resolve ticket 1002")
+    await resolve_torn_jacket(r)
+    await r.finish()
+    real_call, seen = engine.live_server.call, []
+
+    async def dies(name, args):
+        seen.append(name)
+        if len(seen) == 2:  # the refund has already landed on live
+            raise ConnectionResetError("the tool server process died")
+        return await real_call(name, args)
+
+    monkeypatch.setattr(engine.live_server, "call", dies)
+    outcome = await r.approve(by="reviewer")
+    assert outcome.state == State.FAILED and "ConnectionResetError" in outcome.message
+    assert "restored and checked" in outcome.message
+    assert live(engine, "SELECT COUNT(*) FROM refunds WHERE order_id = 5003") == [(0,)]
+
+
+async def test_a_snapshot_that_could_not_be_restored_is_kept_outside_the_session(engine, monkeypatch):
+    r = await engine.rehearse("Resolve ticket 1002")
+    await resolve_torn_jacket(r)
+    await r.finish()
+
+    async def fails(name, args):
+        return CallResult(False, "503 Server Error")
+
+    async def unconfirmed(snapshot):
+        return False
+
+    monkeypatch.setattr(engine.live_server, "call", fails)
+    monkeypatch.setattr(r, "_restore_verified", unconfirmed)
+    outcome = await r.approve(by="reviewer")
+    kept = engine.config.runtime_dir / "recovery" / f"{r.id}-before-approval.db"
+    assert outcome.state == State.FAILED and str(kept) in outcome.message and kept.exists()
+    assert engine.sessions_dir not in kept.parents  # the session folder is cleared when Rehearsal restarts
+
+
 async def test_steps_can_run_in_separate_tasks_like_web_requests(engine):
     r = await asyncio.create_task(engine.rehearse("Resolve ticket 1003"))
     await asyncio.create_task(r.call("update_ticket", {"ticket_id": 1003, "status": "pending"}))
@@ -183,3 +224,26 @@ async def test_audit_log_detects_tampering(engine):
     lines[1] = json.dumps(entry, separators=(",", ":"))
     engine.audit.path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     assert not engine.audit.verify()
+
+
+def test_a_half_written_last_entry_does_not_stop_rehearsal_starting(tmp_path):
+    log = AuditLog(tmp_path / "audit.jsonl", key="")
+    log.write("engine_started")
+    with log.path.open("a", encoding="utf-8") as f:
+        f.write('{"at":"2026-11-24T10:00:00+00:00","ev')  # the process died part way through a write
+    again = AuditLog(log.path, key="")
+    again.write("engine_started")
+    assert [e["event"] for e in again.entries()] == ["engine_started", "unreadable", "engine_started"]
+    assert not again.verify()  # the console shows where the log was damaged
+
+
+def test_a_keyed_chain_cannot_be_recomputed_without_the_key(tmp_path):
+    log = AuditLog(tmp_path / "audit.jsonl", key="kept-away-from-the-log")
+    log.write("rehearsal_applied", by="Amira")
+    assert log.verify()
+    entry = log.entries()[0]
+    entry["by"] = "someone else"  # edit the entry, then recompute its hash as anyone could without the key
+    entry["hash"] = audit._digest({k: v for k, v in entry.items() if k != "hash"})
+    log.path.write_text(json.dumps(entry) + "\n", encoding="utf-8")
+    assert audit.first_break(log.entries()) is None  # a chain without a key would have been fooled
+    assert not log.verify()

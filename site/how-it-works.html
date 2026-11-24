@@ -6,21 +6,20 @@
   <title>How Rehearsal works: shadow runs, row level review and verified replay</title>
   <meta name="description" content="How Rehearsal wraps a Synapse generated MCP server: every agent tool call runs on a shadow copy, a reviewer sees the exact row level changes and risk flags, and approved calls replay on live data with verification and rollback.">
   <link rel="canonical" href="https://rehearsal-ai-app.web.app/how-it-works">
-  <meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#1a1a18" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#0a0a0a">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
-  <link rel="preload" href="/assets/fonts/source-serif-4-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/assets/fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/assets/site.css?v=7">
-  <script src="/assets/site.js?v=1"></script>
+  <link rel="preload" href="/assets/fonts/inter-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/assets/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/assets/site.css?v=10">
+  <script src="/assets/site.js?v=3"></script>
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="Rehearsal">
   <meta property="og:title" content="How Rehearsal works">
   <meta property="og:description" content="Shadow runs, row level review, plain risk rules, verified replay and one click undo, on top of a Synapse generated MCP server.">
   <meta property="og:url" content="https://rehearsal-ai-app.web.app/how-it-works">
-  <meta property="og:image" content="https://rehearsal-ai-app.web.app/assets/img/og.png?v=2">
+  <meta property="og:image" content="https://rehearsal-ai-app.web.app/assets/img/og.png?v=3">
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">
   {
@@ -31,7 +30,7 @@
         "headline": "How Rehearsal works",
         "description": "Shadow runs, row level review, plain risk rules, verified replay and undo on top of a Synapse generated MCP server.",
         "url": "https://rehearsal-ai-app.web.app/how-it-works",
-        "image": "https://rehearsal-ai-app.web.app/assets/img/og.png?v=2",
+        "image": "https://rehearsal-ai-app.web.app/assets/img/og.png?v=3",
         "inLanguage": "en",
         "isPartOf": { "@id": "https://rehearsal-ai-app.web.app/#website" },
         "about": { "@id": "https://rehearsal-ai-app.web.app/#software" }
@@ -62,7 +61,7 @@
         <a class="nav-gh" href="https://github.com/hamzaishtiaq0318-bit/rehearsal" rel="noopener">GitHub</a>
         <a class="nav-cta" href="/try">Try it</a>
       </nav>
-      <button type="button" class="theme-toggle" aria-label="Switch to dark theme"><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.1A8.5 8.5 0 1 1 9.9 3.5a6.6 6.6 0 0 0 10.6 10.6Z"/></svg><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+      <button type="button" class="theme-toggle" aria-label="Switch to light theme"><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.1A8.5 8.5 0 1 1 9.9 3.5a6.6 6.6 0 0 0 10.6 10.6Z"/></svg><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
     </div>
   </header>
 
@@ -114,9 +113,9 @@
 
             <path class="arrow" d="M170 180 H226"/>
             <path class="arrow arrow-brand" d="M430 150 C470 150 460 80 496 80"/>
-            <text class="small" x="448" y="104">1. rehearse</text>
+            <text class="small" x="430" y="98" text-anchor="end">1. rehearse</text>
             <path class="arrow dashed" d="M430 210 C470 210 460 280 496 280"/>
-            <text class="small" x="440" y="262">3. replay after approval</text>
+            <text class="small" x="430" y="274" text-anchor="end">3. replay after approval</text>
             <path class="arrow arrow-brand" d="M710 80 H766"/>
             <path class="arrow" d="M710 280 H766"/>
             <path class="arrow dashed" d="M865 120 V160 H436"/>
@@ -167,12 +166,12 @@
       <div class="wrap prose">
         <h2>3. Decide, then verify</h2>
         <p>Approving replays only the recorded writes that succeeded, in order, through the same generated MCP server pointed at the live app. Before replaying, Rehearsal checks that live data has not changed since the snapshot; if it has, it refuses and asks for a fresh rehearsal. After replaying, it diffs live against a snapshot taken just before approval and checks the result matches the rehearsal exactly. If anything differs, or any call fails, live data is restored and the restore itself is verified.</p>
-        <p>Rejecting discards the shadow. Undo restores the pre approval snapshot, but only when nobody else has changed live data since, so it can never erase other people's work.</p>
+        <p>Rejecting discards the shadow. Undo restores the pre approval snapshot and checks the result, but only when nobody else has changed live data since, so it can never erase other people's work. If a restore ever cannot be confirmed, the snapshot is kept outside the session folder so it survives a restart.</p>
         <h3>Only interrupt people when it matters</h3>
         <p>Approving every click wears reviewers out, so Rehearsal has a trust policy. Work that raises no flag at all, such as a reply or a ticket status change for one customer, is applied without asking. It goes through exactly the same verified replay, the audit log records the policy as the decider, and it can be undone. Money, more than one customer, or anything unusual always waits for a person.</p>
 
         <h2>4. Every step is on the record</h2>
-        <p>Each rehearsal, tool call and decision is appended to an audit log in which every entry carries the hash of the one before it. Editing or deleting any past entry breaks the chain, and the console shows whether the chain is intact.</p>
+        <p>Each rehearsal, tool call and decision is appended to an audit log in which every entry carries the hash of the one before it. Editing an entry, or removing one from the middle, breaks the chain, and the console shows whether the chain is intact. Set <code>REHEARSAL_AUDIT_KEY</code>, kept away from the log, and the hashes are keyed, so nobody can recompute the chain after an edit.</p>
 
         <h2>Works with the app you already have</h2>
         <p>Nothing about Rehearsal is specific to the demo store. A short <code>rehearsal.toml</code> file says how to start the app, which environment variable points it at a database, and which tables represent money and owners. Point it at another Synapse built app and the same shadow, review and replay cycle applies.</p>

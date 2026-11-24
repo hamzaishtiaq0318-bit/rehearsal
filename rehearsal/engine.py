@@ -344,13 +344,19 @@ class Rehearsal:
                                     message=f"Live data changed in {len(drift)} rows since this rehearsal started. "
                                             "Nothing was applied. Rehearse the task again.")
             copy_database(live, self.pre_apply_db)
-            for call in self.replay_calls():
-                result = await self.engine.live_server.call(call.tool, call.args)
-                if not result.ok:
-                    return self._decide(State.FAILED, by, auto=auto,
-                                        message=f"Replay of call {call.index} ({call.tool}) failed: {result.text}. "
-                                                f"{await self._rollback()}")
-            applied = diff_databases(self.pre_apply_db, live)
+            # From here on live may hold part of the replay, so every way out of this block restores it.
+            try:
+                for call in self.replay_calls():
+                    result = await self.engine.live_server.call(call.tool, call.args)
+                    if not result.ok:
+                        return self._decide(State.FAILED, by, auto=auto,
+                                            message=f"Replay of call {call.index} ({call.tool}) failed: {result.text}. "
+                                                    f"{await self._rollback()}")
+                applied = diff_databases(self.pre_apply_db, live)
+            except Exception as e:  # noqa: BLE001 - the tool server or the database failed mid replay
+                return self._decide(State.FAILED, by, auto=auto,
+                                    message=f"The replay stopped with an error ({type(e).__name__}). "
+                                            f"{await self._rollback()}")
             if not same_effect(applied, self.review.changes, target.volatile_columns):
                 return self._decide(State.FAILED, by, auto=auto,
                                     message=f"Live changes did not match the rehearsal. {await self._rollback()}")
@@ -362,17 +368,33 @@ class Rehearsal:
 
     async def _rollback(self) -> str:
         """Put live back to the pre-approval snapshot and prove it, or say clearly that it could not be proved."""
+        try:
+            await self.engine.restart_live_server()  # a timed out request cannot land after the restore
+        except Exception:  # noqa: BLE001 - restoring live matters more than a fresh tool server
+            self.engine.audit.write("live_server_restart_failed", rehearsal=self.id)
+        if await self._restore_verified(self.pre_apply_db):
+            self.engine.audit.write("rollback_verified", rehearsal=self.id)
+            return "Live data was restored and checked against the snapshot taken before approval."
+        kept = self._keep_snapshot()
+        self.engine.audit.write("rollback_unverified", rehearsal=self.id, snapshot=str(kept))
+        return f"Live data could not be confirmed as restored. Check it now; the pre approval snapshot is kept at {kept}."
+
+    async def _restore_verified(self, snapshot: Path) -> bool:
+        """Write a snapshot back into live, then check live matches it. Tries three times."""
         target = self.engine.target
-        await self.engine.restart_live_server()  # a timed out request cannot land after the restore
-        for _ in range(3):
-            restore_database(self.pre_apply_db, target.live_database)
-            if not meaningful(diff_databases(self.pre_apply_db, target.live_database), target.volatile_columns):
-                self.engine.audit.write("rollback_verified", rehearsal=self.id)
-                return "Live data was restored and checked against the snapshot taken before approval."
-            await asyncio.sleep(0.5)
-        self.engine.audit.write("rollback_unverified", rehearsal=self.id)
-        return ("Live data could not be confirmed as restored. Check it now; the pre approval snapshot is "
-                f"kept at {self.pre_apply_db}.")
+        for attempt in range(3):
+            if attempt:
+                await asyncio.sleep(0.5)
+            restore_database(snapshot, target.live_database)
+            if not meaningful(diff_databases(snapshot, target.live_database), target.volatile_columns):
+                return True
+        return False
+
+    def _keep_snapshot(self) -> Path:
+        """Copy the pre approval snapshot out of the session folder, which is cleared when Rehearsal restarts."""
+        kept = self.engine.config.runtime_dir / "recovery" / f"{self.id}-before-approval.db"
+        copy_database(self.pre_apply_db, kept)
+        return kept
 
     async def reject(self, *, by: str, reason: str = "") -> Outcome:
         if self.state not in (State.READY, State.REHEARSING):
@@ -389,8 +411,12 @@ class Rehearsal:
             if since:
                 raise InvalidState(f"Live data changed in {len(since)} rows after this was applied, "
                                    "so an automatic undo could erase other work.")
-            restore_database(self.pre_apply_db, target.live_database)
-            return self._decide(State.UNDONE, by, "Undone. Live data is back to how it was before approval.")
+            if await self._restore_verified(self.pre_apply_db):
+                return self._decide(State.UNDONE, by, "Undone. Live data is back to how it was before approval, "
+                                                      "checked against the snapshot.", verified=True)
+            kept = self._keep_snapshot()
+            return self._decide(State.UNDONE, by, "Undo ran, but live data could not be confirmed as restored. "
+                                                  f"Check it now; the pre approval snapshot is kept at {kept}.")
 
     def _decide(self, state: State, by: str, message: str, verified: bool = False, auto: bool = False) -> Outcome:
         self.state = state
