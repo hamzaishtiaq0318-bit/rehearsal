@@ -50,13 +50,17 @@ class RulesConfig:
     never_change: tuple[str, ...] = ()  # "table" or "table.column" that no task may change
     protected: tuple = ()  # owner ids no task may touch, such as VIP customers
     max_money_cents: int | None = None  # the most one task may pay out in total
+    # the most one owner may receive in a day, across every task: many small requests cannot add up unseen
+    max_money_per_owner_per_day_cents: int | None = None
 
     def __post_init__(self) -> None:
         for item in self.never_change:
             if not isinstance(item, str) or not item or item.count(".") > 1:
                 raise ValueError(f'[rules] never_change takes "table" or "table.column", not {item!r}')
-        if self.max_money_cents is not None and (not isinstance(self.max_money_cents, int) or self.max_money_cents < 0):
-            raise ValueError("[rules] max_money_cents must be a whole number of cents, 0 or more")
+        for name in ("max_money_cents", "max_money_per_owner_per_day_cents"):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
+                raise ValueError(f"[rules] {name} must be a whole number of cents, 0 or more")
 
 
 @dataclass(frozen=True)
@@ -122,8 +126,9 @@ def load(path: Path | None = None) -> Config:
 
 
 def _rules(raw: dict) -> RulesConfig:
-    unknown = set(raw) - {"never_change", "protected", "max_money_cents"}
+    unknown = set(raw) - {"never_change", "protected", "max_money_cents", "max_money_per_owner_per_day_cents"}
     if unknown:  # a misspelt rule must not quietly stop protecting anything
         raise ValueError(f"[rules] does not know {', '.join(sorted(unknown))}")
     return RulesConfig(never_change=tuple(raw.get("never_change", ())), protected=tuple(raw.get("protected", ())),
-                       max_money_cents=raw.get("max_money_cents"))
+                       max_money_cents=raw.get("max_money_cents"),
+                       max_money_per_owner_per_day_cents=raw.get("max_money_per_owner_per_day_cents"))

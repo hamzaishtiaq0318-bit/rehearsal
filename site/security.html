@@ -81,7 +81,7 @@
             <thead><tr><th scope="col">Threat</th><th scope="col">What Rehearsal does</th><th scope="col">Tested</th></tr></thead>
             <tbody>
               <tr><td>Prompt injection hidden in data the agent reads</td><td>Every effect is rehearsed first and judged by what would change, not by the words that caused it. Prompt Guard adds an advisory flag and warns the agent.</td><td>Yes</td></tr>
-              <tr><td>Mass changes that each look reasonable</td><td>Rules flag tasks that touch several customers, move large sums or change many rows. High risk approvals need an explicit acknowledgement.</td><td>Yes</td></tr>
+              <tr><td>Mass changes that each look reasonable</td><td>Rules flag tasks that touch several customers, move large sums or change many rows, and a daily limit per customer counts payouts across tasks, so many small requests cannot add up unseen. High risk approvals need an explicit acknowledgement.</td><td>Yes</td></tr>
               <tr><td>Path injection through tool arguments</td><td>Path arguments must be plain identifiers of the right type, so <code>1/orders</code> or <code>../admin</code> never reach the app.</td><td>Yes, 13 patterns</td></tr>
               <tr><td>Destructive or bulk export endpoints</td><td>Only allow listed endpoints become tools. Customer export and permanent delete are never exposed.</td><td>Yes</td></tr>
               <tr><td>Model keys leaking to generated code</td><td>The generated MCP server starts with only its base URL in its environment, and the protected app never receives Rehearsal's own keys or settings.</td><td>Yes</td></tr>

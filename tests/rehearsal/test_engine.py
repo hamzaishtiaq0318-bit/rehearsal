@@ -3,12 +3,14 @@ import asyncio
 import json
 import re
 import sqlite3
+from dataclasses import replace
 
 import pytest
 import requests
 
 from rehearsal import audit
 from rehearsal.audit import AuditLog
+from rehearsal.config import RulesConfig
 from rehearsal.engine import InvalidState, State, row_id
 from rehearsal.toolserver import CallResult
 
@@ -186,6 +188,25 @@ async def test_a_snapshot_that_could_not_be_restored_is_kept_outside_the_session
     kept = engine.config.runtime_dir / "recovery" / f"{r.id}-before-approval.db"
     assert outcome.state == State.FAILED and str(kept) in outcome.message and kept.exists()
     assert engine.sessions_dir not in kept.parents  # the session folder is cleared when Rehearsal restarts
+
+
+async def test_small_payouts_to_one_customer_add_up_to_the_daily_limit(engine):
+    engine.config = replace(engine.config, rules=RulesConfig(max_money_per_owner_per_day_cents=25000))
+    first = await engine.rehearse("Resolve ticket 1002")
+    await first.call("refund_order", {"order_id": 5003, "amount": 249, "reason": "Torn sleeve"})
+    review = await first.finish(summary="Refunded 249.00 USD.")
+    assert not any("daily limit" in f.title for f in review.flags)  # 249.00 alone is under 250.00
+    assert (await first.approve(by="reviewer")).state == State.APPLIED
+
+    second = await engine.rehearse("Goodwill for customer 2")  # a separate task, for the same customer
+    await second.call("add_store_credit", {"customer_id": 2, "amount": 20, "reason": "Goodwill"})
+    flags = [f for f in (await second.finish(summary="Added 20.00 USD credit.")).flags if "daily limit" in f.title]
+    assert flags and flags[0].level == "high" and "269.00 USD today" in flags[0].detail
+
+    await first.undo(by="reviewer")  # undone money no longer counts
+    third = await engine.rehearse("Goodwill for customer 2, again")
+    await third.call("add_store_credit", {"customer_id": 2, "amount": 20, "reason": "Goodwill"})
+    assert not any("daily limit" in f.title for f in (await third.finish(summary="Added 20.00 USD credit.")).flags)
 
 
 async def test_steps_can_run_in_separate_tasks_like_web_requests(engine):

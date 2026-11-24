@@ -90,8 +90,20 @@ def assess(changes: list[RowChange], owners: list[Any], failed_calls: int, block
     return sorted(flags, key=lambda f: -LEVELS[f.level])
 
 
-def rule_flags(changes: list[RowChange], owners: list[Any], target: Target, rules: RulesConfig) -> list[Flag]:
-    """The business rules written in rehearsal.toml. Breaking any of them is high risk."""
+def paid_by_owner(changes: list[RowChange], owners: list[Any], target: Target) -> dict[str, int]:
+    """Money the changes would pay each owner, keyed by the owner id as text."""
+    cents_of = {id(c): cents for c, cents in money_out(changes, target)}
+    out: dict[str, int] = {}
+    for c, owner in zip(changes, owners):
+        if owner is not None and id(c) in cents_of:
+            out[str(owner)] = out.get(str(owner), 0) + cents_of[id(c)]
+    return out
+
+
+def rule_flags(changes: list[RowChange], owners: list[Any], target: Target, rules: RulesConfig,
+               paid_today: dict[str, int] | None = None) -> list[Flag]:
+    """The business rules written in rehearsal.toml. Breaking any of them is high risk. paid_today is what
+    each owner already received today, for the daily limit."""
     flags: list[Flag] = []
     hits = []
     for c in changes:
@@ -115,6 +127,20 @@ def rule_flags(changes: list[RowChange], owners: list[Any], target: Target, rule
         if total > rules.max_money_cents:
             flags.append(Flag("high", "Breaks a rule: pays out more than one task may",
                               f"{money(total)} USD against a limit of {money(rules.max_money_cents)} USD per task.",
+                              "rule"))
+    limit = rules.max_money_per_owner_per_day_cents
+    if limit is not None:
+        before = paid_today or {}
+        over = sorted(((owner, before.get(owner, 0), cents) for owner, cents in paid_by_owner(changes, owners, target).items()
+                       if before.get(owner, 0) + cents > limit), key=lambda o: str(o[0]))
+        if over:
+            label = (target.owner_table or "records").removesuffix("s")
+            owner, already, now = over[0]
+            more = f" {len(over) - 1} more {label}s are over it too." if len(over) > 1 else ""
+            flags.append(Flag("high", f"Breaks a rule: pays one {label} more than the daily limit",
+                              f"{label.capitalize()} {owner} would receive {money(already + now)} USD today "
+                              f"({money(already)} USD already applied, {money(now)} USD in this task) against a limit "
+                              f"of {money(limit)} USD a day. Small requests that each look fine can add up.{more}",
                               "rule"))
     return flags
 

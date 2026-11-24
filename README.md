@@ -20,7 +20,7 @@ Built on [Synapse](https://www.npmjs.com/package/@2ndbrainlabs-ai/synapse-cli) f
 
 **Judge it in three minutes.**
 
-1. **[Watch the 48 second film](https://rehearsal-ai-app.web.app/#film)**, then read [the problem](#the-problem). It takes 30 seconds.
+1. **[Watch the 48 second film](https://rehearsal-ai-app.web.app/#film)**, then read [the problem](#the-problem). It takes 30 seconds. For the whole cycle on the real console, including a live Synapse rebuild, watch the **[2 minute walkthrough](https://rehearsal-ai-app.web.app/assets/film/walkthrough.mp4)**.
 2. **[Try it in your browser](https://rehearsal-ai-app.web.app/try)**, no install. Pick "Watch Rehearsal catch an attack": twelve refunds, 3,428 USD, flagged before anything reached the live store. Every run there is a real engine run, captured and replayed in the real console.
 3. Read [why Synapse is at the core](#why-synapse-is-at-the-core). The only way Rehearsal touches the app is through the server Synapse generated.
 
@@ -264,6 +264,7 @@ bulk_rows = 5
 [rules]                                # your own rules; breaking one is always high risk
 never_change = ["customers.email", "orders.total_cents"]
 max_money_cents = 100000               # the most one task may pay out
+max_money_per_owner_per_day_cents = 50000   # the most one customer may receive in a day, across tasks
 # protected = [4, 12]                  # owner ids no task may touch, such as VIP customers
 
 [trust]

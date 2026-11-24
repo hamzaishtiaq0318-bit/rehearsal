@@ -110,6 +110,24 @@ def summarize(entries: list[dict], key: bytes | None = None) -> dict:
             "chain_intact": first_break(entries, key) is None}
 
 
+def paid_today(entries: list[dict], day: str) -> dict[str, int]:
+    """Money applied to live on a day (YYYY-MM-DD, UTC), per owner, from the audit log, leaving out work that
+    was undone. A daily limit counts against this, and because it comes from the log it survives a restart."""
+    applied: dict[str, dict] = {}
+    undone: set[str] = set()
+    for e in entries:
+        if e.get("event") == "rehearsal_applied" and str(e.get("at", "")).startswith(day):
+            applied[e.get("rehearsal")] = e.get("paid") or {}
+        elif e.get("event") == "rehearsal_undone":
+            undone.add(e.get("rehearsal"))
+    totals: dict[str, int] = {}
+    for rid, paid in applied.items():
+        if rid not in undone:
+            for owner, cents in paid.items():
+                totals[str(owner)] = totals.get(str(owner), 0) + int(cents)
+    return totals
+
+
 def first_break(entries: list[dict], key: bytes | None = None) -> int | None:
     """The position of the first entry whose hash or link does not check out, or None if the chain holds."""
     prev = GENESIS

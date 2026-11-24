@@ -39,9 +39,11 @@ bulk_rows = 5
 #   never_change     "table" or "table.column" no task may change
 #   protected        owner ids no task may touch, for example VIP customers
 #   max_money_cents  the most one task may pay out in total
+#   max_money_per_owner_per_day_cents  the most one customer may receive in a day, across every task
 [rules]
 never_change = ["customers.email", "orders.total_cents"]
 max_money_cents = 100000
+max_money_per_owner_per_day_cents = 50000
 
 # "low": a rehearsal that raises no flag at all (no money, one customer, nothing unusual) is applied
 # without asking. It is still verified against the rehearsal, logged and undoable.

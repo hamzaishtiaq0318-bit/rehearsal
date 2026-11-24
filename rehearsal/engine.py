@@ -17,14 +17,14 @@ from typing import Any
 
 from . import catalog as catalog_mod
 from .apps import AppProcess, seed_database
-from .audit import TRUST_POLICY, AuditLog
+from .audit import TRUST_POLICY, AuditLog, paid_today
 from .config import Config
 from .dbdiff import (OwnerResolver, RowChange, copy_database, diff_databases, display_names, meaningful,
                      restore_database, same_effect)
 from .explain import Source, leak_flags, provenance, provenance_flags, read_owners, say_do_flags, scope_flags
 from .guard import THRESHOLD as GUARD_THRESHOLD
 from .guard import PromptGuard
-from .risk import LEVELS, Flag, assess, money_out, rule_flags, verdict
+from .risk import LEVELS, Flag, assess, money_out, paid_by_owner, rule_flags, verdict
 from .toolserver import CallResult, ToolServer, fetch_openapi
 
 
@@ -286,7 +286,8 @@ class Rehearsal:
             + say_do_flags(summary, changes, target) \
             + leak_flags(changes, owners, target, self.shadow_db) \
             + scope_flags(read_owners(self.calls, self.base_db, target.owner_table), set(distinct), target) \
-            + rule_flags(changes, owners, target, self.engine.config.rules)
+            + rule_flags(changes, owners, target, self.engine.config.rules,
+                         paid_today(self.engine.audit.entries(), now()[:10]))
         flags.sort(key=lambda f: -LEVELS[f.level])
         self.review = Review(changes, owners, flags, verdict(flags),
                              sum(cents for _, cents in money_out(changes, target)))
@@ -362,7 +363,9 @@ class Rehearsal:
                                     message=f"Live changes did not match the rehearsal. {await self._rollback()}")
             copy_database(live, self.post_apply_db)
             n = len(self.replay_calls())
+            # what each owner received is recorded, so a daily limit can count it, even after a restart
             return self._decide(State.APPLIED, by, auto=auto, verified=True,
+                                paid=paid_by_owner(self.review.changes, self.review.owners, target),
                                 message=f"Applied {n} change{'s' if n != 1 else ''} to live data. "
                                         "Live now matches the rehearsal exactly.")
 
@@ -418,10 +421,11 @@ class Rehearsal:
             return self._decide(State.UNDONE, by, "Undo ran, but live data could not be confirmed as restored. "
                                                   f"Check it now; the pre approval snapshot is kept at {kept}.")
 
-    def _decide(self, state: State, by: str, message: str, verified: bool = False, auto: bool = False) -> Outcome:
+    def _decide(self, state: State, by: str, message: str, verified: bool = False, auto: bool = False,
+                **extra: Any) -> Outcome:
         self.state = state
         self.outcome = Outcome(state, message, verified, auto)
         # auto is recorded as its own field: the overview counts it, never the decider's name.
         self.engine.audit.write(f"rehearsal_{state}", rehearsal=self.id, by=by, message=message, verified=verified,
-                                auto=auto)
+                                auto=auto, **extra)
         return self.outcome
